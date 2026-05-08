@@ -59,6 +59,26 @@ const MOCK_COMPANIES: Company[] = [
   { id: 'mock', name: 'Acme Technologies LLC', entity_type: 'llc', accounting_method: 'cash', fiscal_year_start: 1, timezone: 'America/New_York', ein: '12-3456789', plan: 'pro', subscription_status: 'trialing', trial_ends_at: new Date(Date.now() + 14 * 86400000).toISOString(), logo_url: null, role: 'owner' },
 ];
 
+/** DB uses `tax_id`; UI uses `ein`. */
+export function mapOrganizationRow(org: Record<string, unknown>, role?: string): Company {
+  const taxId = org.tax_id;
+  const legacyEin = org.ein;
+  return {
+    id: String(org.id),
+    name: String(org.name ?? ''),
+    entity_type: (org.entity_type as string) ?? 'llc',
+    accounting_method: (org.accounting_method as string) ?? 'cash',
+    fiscal_year_start: typeof org.fiscal_year_start === 'number' ? org.fiscal_year_start : Number(org.fiscal_year_start ?? 1) || 1,
+    timezone: (org.timezone as string) ?? 'America/New_York',
+    ein: typeof legacyEin === 'string' ? legacyEin : typeof taxId === 'string' ? taxId : null,
+    plan: String(org.plan ?? 'starter'),
+    subscription_status: String(org.subscription_status ?? 'trialing'),
+    trial_ends_at: typeof org.trial_ends_at === 'string' ? org.trial_ends_at : null,
+    logo_url: typeof org.logo_url === 'string' ? org.logo_url : null,
+    role,
+  };
+}
+
 export function useCompanies() {
   const { user } = useAuth();
   return useQuery({
@@ -66,10 +86,12 @@ export function useCompanies() {
     queryFn: async (): Promise<Company[]> => {
       if (!isSupabaseConfigured || !user) return MOCK_COMPANIES;
       const { data, error } = await supabase.from('company_memberships').select('role, organizations(*)').eq('user_id', user.id);
-      if (error) return MOCK_COMPANIES;
-      return (data ?? []).map((m: any) => ({ ...m.organizations, role: m.role })) as Company[];
+      if (error) throw error;
+      return (data ?? []).map((m: { role?: string; organizations: Record<string, unknown> }) =>
+        mapOrganizationRow(m.organizations ?? {}, m.role),
+      );
     },
-    placeholderData: MOCK_COMPANIES,
+    placeholderData: isSupabaseConfigured ? undefined : MOCK_COMPANIES,
   });
 }
 
@@ -79,14 +101,30 @@ export function useCreateCompany() {
   return useMutation({
     mutationFn: async (input: { name: string; entity_type: string; accounting_method: string; ein?: string }) => {
       if (!isSupabaseConfigured) return { ...input, id: crypto.randomUUID() } as Company;
-      // Create org
-      const { data: org, error: orgErr } = await supabase.from('organizations').insert({ ...input, org_id: 'auto' }).select().single();
+      if (!user) throw new Error('You must be signed in to create a company.');
+      const ein = input.ein?.trim();
+      const payload: Record<string, unknown> = {
+        name: input.name.trim(),
+        entity_type: input.entity_type,
+        accounting_method: input.accounting_method,
+        created_by: user.id,
+      };
+      if (ein) payload.tax_id = ein;
+
+      const { data: org, error: orgErr } = await supabase.from('organizations').insert(payload as never).select().single();
       if (orgErr) throw orgErr;
       // Create membership as owner
-      await supabase.from('company_memberships').insert({ org_id: org.id, user_id: user!.id, role: 'owner', is_billing_owner: true });
+      const { error: membershipErr } = await supabase
+        .from('company_memberships')
+        .insert({ org_id: org.id, user_id: user.id, role: 'owner', is_billing_owner: true });
+      if (membershipErr) throw membershipErr;
       // Auto-generate COA
-      await supabase.rpc('generate_default_coa', { p_org_id: org.id, p_entity_type: input.entity_type });
-      return org as Company;
+      const { error: coaErr } = await supabase.rpc('generate_default_coa', {
+        p_org_id: org.id,
+        p_entity_type: input.entity_type,
+      });
+      if (coaErr) throw coaErr;
+      return mapOrganizationRow(org as Record<string, unknown>);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['companies'] }),
   });
@@ -95,11 +133,13 @@ export function useCreateCompany() {
 export function useUpdateCompany() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<Company> & { id: string }) => {
-      if (!isSupabaseConfigured) return { id, ...updates } as Company;
-      const { data, error } = await supabase.from('organizations').update(updates).eq('id', id).select().single();
+    mutationFn: async ({ id, ein, ...updates }: Partial<Company> & { id: string }) => {
+      if (!isSupabaseConfigured) return { id, ein, ...updates } as Company;
+      const patch: Record<string, unknown> = { ...updates };
+      if (ein !== undefined) patch.tax_id = ein;
+      const { data, error } = await supabase.from('organizations').update(patch as never).eq('id', id).select().single();
       if (error) throw error;
-      return data as Company;
+      return mapOrganizationRow(data as Record<string, unknown>);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['companies'] }),
   });

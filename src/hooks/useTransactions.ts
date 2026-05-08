@@ -77,26 +77,32 @@ export const MOCK_TRANSACTIONS: BankTransaction[] = [
   },
 ];
 
-export function useTransactions(filters?: { limit?: number; type?: string; is_matched?: boolean }) {
+export function useTransactions(filters?: { limit?: number; type?: string; is_matched?: boolean; orgId?: string }) {
   return useQuery({
     queryKey: ['transactions', filters],
     queryFn: async (): Promise<BankTransaction[]> => {
       if (!isSupabaseConfigured) {
         let results = MOCK_TRANSACTIONS;
+        if (filters?.orgId && filters.orgId !== 'mock') {
+          results = results.filter(t => t.org_id === filters.orgId);
+        }
         if (filters?.type) results = results.filter(t => t.type === filters.type);
         if (filters?.is_matched !== undefined) results = results.filter(t => t.is_matched === filters.is_matched);
         if (filters?.limit) results = results.slice(0, filters.limit);
         return results;
       }
       let q = supabase.from('bank_transactions').select('*').order('date', { ascending: false });
+      if (filters?.orgId && filters.orgId !== 'mock') {
+        q = q.eq('org_id', filters.orgId);
+      }
       if (filters?.type) q = q.eq('type', filters.type);
       if (filters?.is_matched !== undefined) q = q.eq('is_matched', filters.is_matched);
       if (filters?.limit) q = q.limit(filters.limit);
       const { data, error } = await q;
-      if (error) return MOCK_TRANSACTIONS;
+      if (error) throw error;
       return data as BankTransaction[];
     },
-    placeholderData: MOCK_TRANSACTIONS,
+    placeholderData: isSupabaseConfigured ? undefined : MOCK_TRANSACTIONS,
   });
 }
 
@@ -111,7 +117,11 @@ export function useCreateTransaction() {
       if (error) throw error;
       return data as BankTransaction;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+      qc.invalidateQueries({ queryKey: ['dashboard_kpis'] });
+      qc.invalidateQueries({ queryKey: ['cashflow_chart'] });
+    },
   });
 }
 

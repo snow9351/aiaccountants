@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
-import { MOCK_INVOICES } from './useInvoices';
-import { MOCK_TRANSACTIONS } from './useTransactions';
+import { useCompanyStore } from '@/hooks/useCompanies';
 
 export interface DashboardKPIs {
   revenue: number;
@@ -20,6 +19,13 @@ export interface ARAgingBucket {
   amount: number;
   count: number;
 }
+
+export type CashFlowChartPoint = {
+  month: string;
+  income: number;
+  expenses: number;
+  forecast: number | null;
+};
 
 const MOCK_KPIS: DashboardKPIs = {
   revenue: 61000,
@@ -41,52 +47,135 @@ const MOCK_AR_AGING: ARAgingBucket[] = [
   { bucket: '90+ days', amount: 0, count: 0 },
 ];
 
+function padMonth(y: number, m0: number) {
+  return `${y}-${String(m0 + 1).padStart(2, '0')}`;
+}
+
+/** Rolling calendar months of income / expenses from bank_transactions (same source as Transactions page). */
+export function buildCashFlowSeriesFromRows(
+  rows: { date: string; amount: number; type: string }[],
+  rollingMonths: number,
+): CashFlowChartPoint[] {
+  const now = new Date();
+  const keys: string[] = [];
+  for (let i = rollingMonths - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    keys.push(padMonth(d.getFullYear(), d.getMonth()));
+  }
+
+  const totals = new Map<string, { income: number; expenses: number }>();
+  keys.forEach((k) => totals.set(k, { income: 0, expenses: 0 }));
+
+  for (const t of rows) {
+    const key = (t.date ?? '').slice(0, 7);
+    const b = totals.get(key);
+    if (!b) continue;
+    if (t.type === 'transfer') continue;
+    if (t.type === 'income') b.income += Math.max(0, Number(t.amount));
+    else if (t.type === 'expense') b.expenses += Math.abs(Number(t.amount));
+  }
+
+  return keys.map((key) => {
+    const d = new Date(key + '-01T12:00:00');
+    const short = d.toLocaleString('default', { month: 'short' });
+    const y = d.getFullYear();
+    const repeatShort = keys.filter((k) => new Date(k + '-01T12:00:00').toLocaleString('default', { month: 'short' }) === short).length > 1;
+    const label = repeatShort ? `${short} ${String(y).slice(-2)}` : short;
+    const pair = totals.get(key)!;
+    return { month: label, income: pair.income, expenses: pair.expenses, forecast: null };
+  });
+}
+
+function summarizeTxMonth(
+  rows: { amount: number; type: string }[],
+): { revenue: number; expenses: number } {
+  let revenue = 0;
+  let expenses = 0;
+  for (const t of rows) {
+    if (t.type === 'transfer') continue;
+    if (t.type === 'income') revenue += Math.max(0, Number(t.amount));
+    else if (t.type === 'expense') expenses += Math.abs(Number(t.amount));
+  }
+  return { revenue, expenses };
+}
+
+function pctChange(prev: number, curr: number): number {
+  if (prev <= 0 && curr <= 0) return 0;
+  if (prev <= 0) return 100;
+  return ((curr - prev) / prev) * 100;
+}
+
 export function useDashboardKPIs() {
+  const orgId = useCompanyStore((s) => s.activeOrgId);
+
   return useQuery({
-    queryKey: ['dashboard_kpis'],
+    queryKey: ['dashboard_kpis', orgId],
+    enabled: !isSupabaseConfigured || Boolean(orgId),
     queryFn: async (): Promise<DashboardKPIs> => {
       if (!isSupabaseConfigured) return MOCK_KPIS;
-      // Calculate from real data
+
       const now = new Date();
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-      const [invoicesRes, expensesRes, customersRes, bankRes] = await Promise.all([
-        supabase.from('invoices').select('total, amount_paid, status').gte('issue_date', monthStart),
-        supabase.from('expenses').select('amount').gte('date', monthStart),
-        supabase.from('customers').select('id').eq('is_active', true),
-        supabase.from('bank_accounts').select('current_balance').eq('account_type', 'checking'),
+      const y = now.getFullYear();
+      const m = now.getMonth();
+      const monthStart = new Date(y, m, 1).toISOString().slice(0, 10);
+      const prevMonthStart = new Date(y, m - 1, 1).toISOString().slice(0, 10);
+      const prevMonthEnd = new Date(y, m, 0).toISOString().slice(0, 10);
+
+      const [currTx, prevTx, customersRes, bankRes] = await Promise.all([
+        supabase.from('bank_transactions').select('amount, type').eq('org_id', orgId).gte('date', monthStart),
+        supabase
+          .from('bank_transactions')
+          .select('amount, type')
+          .eq('org_id', orgId)
+          .gte('date', prevMonthStart)
+          .lte('date', prevMonthEnd),
+        supabase.from('customers').select('id').eq('org_id', orgId).eq('is_active', true),
+        supabase.from('bank_accounts').select('current_balance').eq('org_id', orgId).eq('account_type', 'checking'),
       ]);
-      const revenue = (invoicesRes.data ?? []).filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0);
-      const expenses = (expensesRes.data ?? []).reduce((s, e) => s + e.amount, 0);
-      const cashBalance = (bankRes.data ?? []).reduce((s, a) => s + a.current_balance, 0);
+
+      if (currTx.error) throw currTx.error;
+      if (prevTx.error) throw prevTx.error;
+      if (customersRes.error) throw customersRes.error;
+      if (bankRes.error) throw bankRes.error;
+
+      const cur = summarizeTxMonth(currTx.data ?? []);
+      const prev = summarizeTxMonth(prevTx.data ?? []);
+
+      const cashBalance = (bankRes.data ?? []).reduce((s, a) => s + Number(a.current_balance ?? 0), 0);
+
       return {
-        revenue: revenue || MOCK_KPIS.revenue,
-        revenueTrend: MOCK_KPIS.revenueTrend,
-        netProfit: (revenue - expenses) || MOCK_KPIS.netProfit,
-        netProfitTrend: MOCK_KPIS.netProfitTrend,
-        expenses: expenses || MOCK_KPIS.expenses,
-        expensesTrend: MOCK_KPIS.expensesTrend,
-        activeCustomers: (customersRes.data ?? []).length || MOCK_KPIS.activeCustomers,
-        customersTrend: MOCK_KPIS.customersTrend,
-        cashBalance: cashBalance || MOCK_KPIS.cashBalance,
+        revenue: cur.revenue,
+        revenueTrend: pctChange(prev.revenue, cur.revenue),
+        expenses: cur.expenses,
+        expensesTrend: pctChange(prev.expenses, cur.expenses),
+        netProfit: cur.revenue - cur.expenses,
+        netProfitTrend: pctChange(prev.revenue - prev.expenses, cur.revenue - cur.expenses),
+        activeCustomers: (customersRes.data ?? []).length,
+        customersTrend: 0,
+        cashBalance,
       };
     },
-    placeholderData: MOCK_KPIS,
-    staleTime: 1000 * 60 * 2, // 2 minutes
+    placeholderData: isSupabaseConfigured ? undefined : MOCK_KPIS,
+    staleTime: 1000 * 60 * 2,
   });
 }
 
 export function useARAgingData() {
+  const orgId = useCompanyStore((s) => s.activeOrgId);
+
   return useQuery({
-    queryKey: ['ar_aging'],
+    queryKey: ['ar_aging', orgId],
+    enabled: !isSupabaseConfigured || Boolean(orgId),
     queryFn: async (): Promise<ARAgingBucket[]> => {
       if (!isSupabaseConfigured) return MOCK_AR_AGING;
       const today = new Date();
       const { data, error } = await supabase
         .from('invoices')
         .select('balance_due, due_date')
+        .eq('org_id', orgId)
         .not('status', 'in', '("paid","cancelled","draft")')
         .gt('balance_due', 0);
-      if (error) return MOCK_AR_AGING;
+      if (error) throw error;
       const buckets: ARAgingBucket[] = [
         { bucket: 'Current', amount: 0, count: 0 },
         { bucket: '1-30 days', amount: 0, count: 0 },
@@ -94,42 +183,49 @@ export function useARAgingData() {
         { bucket: '61-90 days', amount: 0, count: 0 },
         { bucket: '90+ days', amount: 0, count: 0 },
       ];
-      (data as { balance_due: number; due_date: string }[]).forEach(inv => {
-        const daysOverdue = Math.floor((today.getTime() - new Date(inv.due_date).getTime()) / (1000 * 60 * 60 * 24));
+      for (const inv of data ?? []) {
+        const due = inv.due_date ? new Date(inv.due_date) : today;
+        const daysOverdue = Math.floor((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
         const idx = daysOverdue <= 0 ? 0 : daysOverdue <= 30 ? 1 : daysOverdue <= 60 ? 2 : daysOverdue <= 90 ? 3 : 4;
-        buckets[idx].amount += inv.balance_due;
+        buckets[idx].amount += Number(inv.balance_due ?? 0);
         buckets[idx].count += 1;
-      });
+      }
       return buckets;
     },
-    placeholderData: MOCK_AR_AGING,
+    placeholderData: isSupabaseConfigured ? undefined : MOCK_AR_AGING,
   });
 }
+
+const DEMO_CASH_FLOW_STATIC: CashFlowChartPoint[] = [
+  { month: 'Nov', income: 42000, expenses: 31000, forecast: null },
+  { month: 'Dec', income: 48000, expenses: 32500, forecast: null },
+  { month: 'Jan', income: 45500, expenses: 31800, forecast: null },
+  { month: 'Feb', income: 52200, expenses: 33200, forecast: null },
+  { month: 'Mar', income: 58400, expenses: 36100, forecast: null },
+  { month: 'Apr', income: 53200, expenses: 34400, forecast: null },
+];
 
 export function useCashFlowChartData() {
+  const orgId = useCompanyStore((s) => s.activeOrgId);
+
   return useQuery({
-    queryKey: ['cashflow_chart'],
-    queryFn: async () => {
+    queryKey: ['cashflow_chart', orgId],
+    enabled: !isSupabaseConfigured || Boolean(orgId),
+    queryFn: async (): Promise<CashFlowChartPoint[]> => {
       if (!isSupabaseConfigured) {
-        return [
-          { month: 'Oct', revenue: 42000, expenses: 28000 },
-          { month: 'Nov', revenue: 48000, expenses: 31000 },
-          { month: 'Dec', revenue: 55000, expenses: 35000 },
-          { month: 'Jan', revenue: 38000, expenses: 29000 },
-          { month: 'Feb', revenue: 52000, expenses: 33000 },
-          { month: 'Mar', revenue: 61000, expenses: 38000 },
-        ];
+        return DEMO_CASH_FLOW_STATIC;
       }
-      const { data } = await supabase.from('pl_summary' as never).select('*').order('period', { ascending: true }).limit(6);
-      if (!data) return [];
-      type PLRow = { period: string; revenue: number; expenses: number };
-      return (data as PLRow[]).map(row => ({
-        month: new Date(row.period).toLocaleString('default', { month: 'short' }),
-        revenue: row.revenue,
-        expenses: row.expenses,
-      }));
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString().slice(0, 10);
+      const { data, error } = await supabase
+        .from('bank_transactions')
+        .select('date, amount, type')
+        .eq('org_id', orgId)
+        .gte('date', start)
+        .order('date', { ascending: true });
+      if (error) throw error;
+      return buildCashFlowSeriesFromRows(data ?? [], 6);
     },
+    placeholderData: isSupabaseConfigured ? undefined : DEMO_CASH_FLOW_STATIC,
   });
 }
-
-export { MOCK_INVOICES, MOCK_TRANSACTIONS };

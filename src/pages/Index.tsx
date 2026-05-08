@@ -12,7 +12,7 @@ import { useDashboardKPIs } from "@/hooks/useDashboard";
 
 const Index = () => {
   const { user } = useAuth();
-  const { data: kpis } = useDashboardKPIs();
+  const { data: kpis, isPending: kpisPending } = useDashboardKPIs();
 
   const displayName = user?.user_metadata?.full_name?.split(' ')[0]
     ?? user?.email?.split('@')[0]
@@ -43,30 +43,30 @@ const Index = () => {
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KPICard
           title="Revenue"
-          value={kpis ? fmtCurrency(kpis.revenue) : "$61,000"}
-          change={kpis ? `+${kpis.revenueTrend.toFixed(1)}%` : "+17.3%"}
-          trend="up"
+          value={kpisPending || !kpis ? "…" : fmtCurrency(kpis.revenue)}
+          change={kpisPending || !kpis ? "…" : `${kpis.revenueTrend >= 0 ? "+" : ""}${kpis.revenueTrend.toFixed(1)}%`}
+          trend={kpis && kpis.revenueTrend >= 0 ? "up" : "down"}
           icon={DollarSign}
         />
         <KPICard
           title="Net Profit"
-          value={kpis ? fmtCurrency(kpis.netProfit) : "$23,000"}
-          change={kpis ? `+${kpis.netProfitTrend.toFixed(1)}%` : "+21.0%"}
-          trend="up"
+          value={kpisPending || !kpis ? "…" : fmtCurrency(kpis.netProfit)}
+          change={kpisPending || !kpis ? "…" : `${kpis.netProfitTrend >= 0 ? "+" : ""}${kpis.netProfitTrend.toFixed(1)}%`}
+          trend={kpis && kpis.netProfitTrend >= 0 ? "up" : "down"}
           icon={TrendingUp}
           glowColor="accent"
         />
         <KPICard
           title="Expenses"
-          value={kpis ? fmtCurrency(kpis.expenses) : "$38,000"}
-          change={kpis ? `${kpis.expensesTrend.toFixed(1)}%` : "-4.2%"}
-          trend={kpis ? (kpis.expensesTrend < 0 ? "up" : "down") : "up"}
+          value={kpisPending || !kpis ? "…" : fmtCurrency(kpis.expenses)}
+          change={kpisPending || !kpis ? "…" : `${kpis.expensesTrend >= 0 ? "+" : ""}${kpis.expensesTrend.toFixed(1)}%`}
+          trend={kpis && kpis.expensesTrend <= 0 ? "up" : "down"}
           icon={Receipt}
         />
         <KPICard
           title="Customers"
-          value={kpis ? String(kpis.activeCustomers) : "6"}
-          change={kpis ? `+${kpis.customersTrend}` : "+2"}
+          value={kpisPending || !kpis ? "…" : String(kpis.activeCustomers)}
+          change={kpisPending || !kpis ? "…" : `${kpis.customersTrend >= 0 ? "+" : ""}${kpis.customersTrend}`}
           trend="up"
           icon={Users}
           glowColor="accent"

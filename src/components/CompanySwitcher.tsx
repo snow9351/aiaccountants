@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Building2, ChevronDown, Plus, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCompanies, useCompanyStore } from "@/hooks/useCompanies";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -95,7 +95,12 @@ export function CompanySwitcher({ collapsed }: { collapsed: boolean }) {
 
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="sm:max-w-md rounded-2xl border-border/50 bg-card">
-          <DialogHeader><DialogTitle className="font-display text-lg">Add Company</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle className="font-display text-lg">Add Company</DialogTitle>
+            <DialogDescription className="sr-only">
+              Create a new organization by entering company details.
+            </DialogDescription>
+          </DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="space-y-1.5">
               <Label>Legal Name *</Label>

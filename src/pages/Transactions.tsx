@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { type ChangeEventHandler, useRef, useState, useMemo } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import {
   ArrowUpRight,
@@ -15,6 +15,7 @@ import {
   TrendingUp,
   TrendingDown,
   Receipt,
+  Upload,
   Link2,
   Link2Off,
   Brain,
@@ -61,9 +62,10 @@ export default function Transactions() {
   const orgId = useOrgId();
 
   // Hooks
-  const { data: transactions = [], isLoading } = useTransactions();
+  const { data: transactions = [], isLoading, isError, error, refetch } = useTransactions({ orgId });
   const createTransaction = useCreateTransaction();
   const matchTransaction = useMatchTransaction();
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   // Local state
   const [search, setSearch] = useState("");
@@ -184,6 +186,129 @@ export default function Transactions() {
     toast({ title: "Exported", description: `${filtered.length} transactions exported to CSV.` });
   };
 
+  const parseCsvRows = (csvText: string): string[][] => {
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let value = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < csvText.length; i++) {
+      const ch = csvText[i];
+      const next = csvText[i + 1];
+      if (ch === '"') {
+        if (inQuotes && next === '"') {
+          value += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (ch === "," && !inQuotes) {
+        row.push(value.trim());
+        value = "";
+      } else if ((ch === "\n" || ch === "\r") && !inQuotes) {
+        if (ch === "\r" && next === "\n") i++;
+        row.push(value.trim());
+        value = "";
+        if (row.some((cell) => cell.length > 0)) rows.push(row);
+        row = [];
+      } else {
+        value += ch;
+      }
+    }
+
+    if (value.length > 0 || row.length > 0) {
+      row.push(value.trim());
+      if (row.some((cell) => cell.length > 0)) rows.push(row);
+    }
+
+    return rows;
+  };
+
+  const handleImportClick = () => {
+    importInputRef.current?.click();
+  };
+
+  const handleImportCsv: ChangeEventHandler<HTMLInputElement> = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    try {
+      const csvText = await file.text();
+      const rows = parseCsvRows(csvText);
+      if (rows.length < 2) {
+        toast({ title: "Import failed", description: "CSV is empty or missing data rows.", variant: "destructive" });
+        return;
+      }
+
+      const headerIndex = new Map(
+        rows[0].map((h, i) => [h.replace(/^"|"$/g, "").trim().toLowerCase(), i] as const),
+      );
+
+      const dateIdx = headerIndex.get("date");
+      const descIdx = headerIndex.get("description");
+      const amountIdx = headerIndex.get("amount");
+      const merchantIdx = headerIndex.get("merchant");
+      const typeIdx = headerIndex.get("type");
+      const categoryIdx = headerIndex.get("category");
+
+      if (dateIdx === undefined || descIdx === undefined || amountIdx === undefined) {
+        toast({
+          title: "Import failed",
+          description: "CSV must include Date, Description, and Amount columns.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      let imported = 0;
+      let skipped = 0;
+      for (const cells of rows.slice(1)) {
+        const date = (cells[dateIdx] ?? "").replace(/^"|"$/g, "").trim();
+        const description = (cells[descIdx] ?? "").replace(/^"|"$/g, "").trim();
+        const amountText = (cells[amountIdx] ?? "").replace(/^"|"$/g, "").replace(/\$/g, "").replace(/,/g, "").trim();
+        const merchant = merchantIdx !== undefined ? (cells[merchantIdx] ?? "").replace(/^"|"$/g, "").trim() : "";
+        const category = categoryIdx !== undefined ? (cells[categoryIdx] ?? "").replace(/^"|"$/g, "").trim() : "";
+        const typeRaw = typeIdx !== undefined ? (cells[typeIdx] ?? "").replace(/^"|"$/g, "").trim().toLowerCase() : "";
+        const amount = parseFloat(amountText);
+
+        if (!date || !description || Number.isNaN(amount)) {
+          skipped++;
+          continue;
+        }
+
+        const normalizedType: "income" | "expense" | "transfer" =
+          typeRaw === "income" || typeRaw === "expense" || typeRaw === "transfer"
+            ? typeRaw
+            : amount >= 0
+              ? "income"
+              : "expense";
+
+        await createTransaction.mutateAsync({
+          org_id: orgId,
+          bank_account_id: "acct-1",
+          date,
+          description,
+          merchant: merchant || null,
+          amount,
+          type: normalizedType,
+          category: category || null,
+          is_matched: false,
+          is_reconciled: false,
+          is_pending: false,
+        });
+        imported++;
+      }
+
+      toast({
+        title: "CSV import completed",
+        description: `Imported ${imported} transaction(s)${skipped ? `, skipped ${skipped}` : ""}.`,
+      });
+    } catch (err) {
+      toast({ title: "Import failed", description: (err as Error).message, variant: "destructive" });
+    }
+  };
+
   return (
     <AppLayout>
       <CommandPalette />
@@ -202,6 +327,16 @@ export default function Transactions() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={handleImportCsv}
+          />
+          <Button variant="outline" size="sm" className="gap-2 rounded-xl border-border/50" onClick={handleImportClick}>
+            <Upload className="h-4 w-4" /> Import CSV
+          </Button>
           <Button variant="outline" size="sm" className="gap-2 rounded-xl border-border/50" onClick={handleExport}>
             <Download className="h-4 w-4" /> Export
           </Button>
@@ -300,6 +435,14 @@ export default function Transactions() {
 
       {/* Transaction List */}
       <div className="glass-card overflow-hidden rounded-2xl">
+        {isError && (
+          <div className="border-b border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            Failed to load live transactions: {(error as Error)?.message ?? "Unknown error"}
+            <Button variant="link" className="ml-2 h-auto p-0 text-destructive underline" onClick={() => refetch()}>
+              Retry
+            </Button>
+          </div>
+        )}
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
