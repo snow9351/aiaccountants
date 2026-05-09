@@ -93,6 +93,14 @@ export default function Invoices() {
   /* ---- handlers ---- */
 
   const handleCreate = async () => {
+    if (!orgId) {
+      toast({
+        title: "No company selected",
+        description: "Select or create a company first to create invoices.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (!form.customer_id || !form.amount) {
       toast({ title: "Missing fields", description: "Customer and amount are required.", variant: "destructive" });
       return;

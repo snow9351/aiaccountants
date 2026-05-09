@@ -35,9 +35,7 @@ export function useOrgId(): string {
     }
   }, [activeOrgId, companies, setActiveOrgId]);
 
-  // Fallback for demo mode
-  if (!activeOrgId && (!companies || companies.length === 0)) return 'mock';
-  return activeOrgId || 'mock';
+  return activeOrgId;
 }
 
 export interface Company {
@@ -54,10 +52,6 @@ export interface Company {
   logo_url: string | null;
   role?: string;
 }
-
-const MOCK_COMPANIES: Company[] = [
-  { id: 'mock', name: 'Acme Technologies LLC', entity_type: 'llc', accounting_method: 'cash', fiscal_year_start: 1, timezone: 'America/New_York', ein: '12-3456789', plan: 'pro', subscription_status: 'trialing', trial_ends_at: new Date(Date.now() + 14 * 86400000).toISOString(), logo_url: null, role: 'owner' },
-];
 
 /** DB uses `tax_id`; UI uses `ein`. */
 export function mapOrganizationRow(org: Record<string, unknown>, role?: string): Company {
@@ -84,14 +78,13 @@ export function useCompanies() {
   return useQuery({
     queryKey: ['companies', user?.id],
     queryFn: async (): Promise<Company[]> => {
-      if (!isSupabaseConfigured || !user) return MOCK_COMPANIES;
+      if (!isSupabaseConfigured || !user) return [];
       const { data, error } = await supabase.from('company_memberships').select('role, organizations(*)').eq('user_id', user.id);
       if (error) throw error;
       return (data ?? []).map((m: { role?: string; organizations: Record<string, unknown> }) =>
         mapOrganizationRow(m.organizations ?? {}, m.role),
       );
     },
-    placeholderData: isSupabaseConfigured ? undefined : MOCK_COMPANIES,
   });
 }
 

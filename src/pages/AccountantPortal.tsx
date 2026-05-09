@@ -12,6 +12,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { useTeamMembers, useClientRequests, useInviteTeamMember, useCreateClientRequest, useUpdateClientRequest } from "@/hooks/useAccountantPortal";
 import { useOrgId } from "@/hooks/useCompanies";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import type { TeamMember, ClientRequest } from "@/hooks/useAccountantPortal";
 
 const roleConfig: Record<string, { label: string; icon: React.ElementType; color: string }> = {
@@ -36,6 +37,7 @@ const priorityColors: Record<string, string> = {
 
 export default function AccountantPortal() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const orgId = useOrgId();
   const { data: members = [] } = useTeamMembers(orgId);
   const { data: requests = [] } = useClientRequests(orgId);
@@ -52,6 +54,10 @@ export default function AccountantPortal() {
   const openRequests = requests.filter(r => r.status === "open" || r.status === "in_progress").length;
 
   const handleInvite = async () => {
+    if (!orgId) {
+      toast({ title: "Select a company first", description: "Create or select a company in Settings before inviting team members.", variant: "destructive" });
+      return;
+    }
     if (!inviteForm.email || !inviteForm.name) {
       toast({ title: "Name and email required", variant: "destructive" }); return;
     }
@@ -66,6 +72,14 @@ export default function AccountantPortal() {
   };
 
   const handleCreateRequest = async () => {
+    if (!orgId) {
+      toast({ title: "Select a company first", description: "Create or select a company in Settings before creating requests.", variant: "destructive" });
+      return;
+    }
+    if (!user) {
+      toast({ title: "Sign in required", description: "Please sign in again.", variant: "destructive" });
+      return;
+    }
     if (!requestForm.title) {
       toast({ title: "Title required", variant: "destructive" }); return;
     }
@@ -74,8 +88,8 @@ export default function AccountantPortal() {
         org_id: orgId,
         title: requestForm.title,
         description: requestForm.description,
-        requested_by: "u-1",
-        requested_by_name: "Jordan Davis",
+        requested_by: user.id,
+        requested_by_name: (user.user_metadata?.full_name as string | undefined) ?? user.email ?? "User",
         assigned_to: null,
         assigned_to_name: null,
         status: "open",
@@ -91,6 +105,10 @@ export default function AccountantPortal() {
   };
 
   const resolveRequest = (id: string) => {
+    if (!orgId) {
+      toast({ title: "Select a company first", variant: "destructive" });
+      return;
+    }
     updateRequest.mutate({ id, status: "resolved", resolved_at: new Date().toISOString() });
     toast({ title: "Request resolved" });
   };
@@ -159,6 +177,12 @@ export default function AccountantPortal() {
       {/* Team tab */}
       {tab === "team" && (
         <div className="space-y-3">
+          {!orgId && (
+            <div className="glass-card rounded-2xl p-8 text-center">
+              <p className="text-sm font-medium text-foreground">No company selected</p>
+              <p className="mt-1 text-sm text-muted-foreground">Go to Settings and create/select a company to manage your team.</p>
+            </div>
+          )}
           {members.map(member => {
             const role = roleConfig[member.role];
             const RoleIcon = role.icon;
@@ -203,6 +227,12 @@ export default function AccountantPortal() {
       {/* Requests tab */}
       {tab === "requests" && (
         <div className="space-y-3">
+          {!orgId && (
+            <div className="glass-card rounded-2xl p-8 text-center">
+              <p className="text-sm font-medium text-foreground">No company selected</p>
+              <p className="mt-1 text-sm text-muted-foreground">Go to Settings and create/select a company to manage requests.</p>
+            </div>
+          )}
           {requests.map(req => {
             const status = requestStatusConfig[req.status];
             return (

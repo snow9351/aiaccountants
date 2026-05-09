@@ -30,6 +30,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { useToast } from "@/hooks/use-toast";
 import { useTransactions, useCreateTransaction, useMatchTransaction } from "@/hooks/useTransactions";
 import { useOrgId } from "@/hooks/useCompanies";
+import { useBankAccounts } from "@/hooks/useBankAccounts";
 import type { BankTransaction } from "@/integrations/supabase/types";
 
 const fmtCurrency = (v: number) =>
@@ -65,6 +66,7 @@ export default function Transactions() {
   const { data: transactions = [], isLoading, isError, error, refetch } = useTransactions({ orgId });
   const createTransaction = useCreateTransaction();
   const matchTransaction = useMatchTransaction();
+  const { data: bankAccounts = [], isLoading: bankLoading } = useBankAccounts();
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   // Local state
@@ -72,6 +74,7 @@ export default function Transactions() {
   const [filterType, setFilterType] = useState<string>("all");
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [form, setForm] = useState({
+    bank_account_id: "",
     date: "",
     description: "",
     merchant: "",
@@ -110,6 +113,10 @@ export default function Transactions() {
 
   // Create handler
   const handleCreate = async () => {
+    if (!form.bank_account_id) {
+      toast({ title: "Select an account", description: "Choose a bank account for this transaction.", variant: "destructive" });
+      return;
+    }
     if (!form.date || !form.description || !form.amount) {
       toast({ title: "Fill required fields", description: "Date, description, and amount are required.", variant: "destructive" });
       return;
@@ -124,7 +131,7 @@ export default function Transactions() {
     try {
       await createTransaction.mutateAsync({
         org_id: orgId,
-        bank_account_id: "acct-1",
+        bank_account_id: form.bank_account_id,
         date: form.date,
         description: form.description,
         merchant: form.merchant || null,
@@ -137,7 +144,7 @@ export default function Transactions() {
       });
       toast({ title: "Transaction created" });
       setShowNewDialog(false);
-      setForm({ date: "", description: "", merchant: "", amount: "", type: "expense", category: "" });
+      setForm({ bank_account_id: "", date: "", description: "", merchant: "", amount: "", type: "expense", category: "" });
     } catch (err) {
       toast({ title: "Failed", description: (err as Error).message, variant: "destructive" });
     }
@@ -263,6 +270,15 @@ export default function Transactions() {
 
       let imported = 0;
       let skipped = 0;
+      const importBankId = bankAccounts[0]?.id;
+      if (!importBankId) {
+        toast({
+          title: "Import failed",
+          description: bankLoading ? "Bank accounts are still loading. Try again in a moment." : "Create or connect a bank account before importing.",
+          variant: "destructive",
+        });
+        return;
+      }
       for (const cells of rows.slice(1)) {
         const date = (cells[dateIdx] ?? "").replace(/^"|"$/g, "").trim();
         const description = (cells[descIdx] ?? "").replace(/^"|"$/g, "").trim();
@@ -286,7 +302,7 @@ export default function Transactions() {
 
         await createTransaction.mutateAsync({
           org_id: orgId,
-          bank_account_id: "acct-1",
+          bank_account_id: importBankId,
           date,
           description,
           merchant: merchant || null,
@@ -580,6 +596,27 @@ export default function Transactions() {
             <DialogTitle className="font-display text-lg">New Transaction</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label>Bank Account *</Label>
+              <Select
+                value={form.bank_account_id}
+                onValueChange={(v) => setForm((f) => ({ ...f, bank_account_id: v }))}
+              >
+                <SelectTrigger className="bg-background/50">
+                  <SelectValue placeholder={bankLoading ? "Loading accounts..." : "Select an account"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {bankAccounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.account_name} — {a.bank_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!bankLoading && bankAccounts.length === 0 && (
+                <p className="text-xs text-muted-foreground">No bank accounts found. Create/connect one first.</p>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Date *</Label>

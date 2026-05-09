@@ -16,16 +16,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Demo user — used when Supabase is not configured
-const MOCK_USER = {
-  id: 'demo-user-id',
-  email: 'jordan@connectcash.ai',
-  user_metadata: { full_name: 'Jordan Davis' },
-  app_metadata: {},
-  aud: 'authenticated',
-  created_at: new Date().toISOString(),
-} as unknown as User;
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -59,9 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     if (!isSupabaseConfigured) {
-      // Demo mode: set mock user directly
-      setUser(MOCK_USER);
-      return;
+      throw new Error('Supabase is not configured.');
     }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
@@ -69,8 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string, name: string) => {
     if (!isSupabaseConfigured) {
-      setUser(MOCK_USER);
-      return;
+      throw new Error('Supabase is not configured.');
     }
     const { error } = await supabase.auth.signUp({
       email,

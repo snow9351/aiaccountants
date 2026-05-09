@@ -27,26 +27,6 @@ export type CashFlowChartPoint = {
   forecast: number | null;
 };
 
-const MOCK_KPIS: DashboardKPIs = {
-  revenue: 61000,
-  revenueTrend: 17.3,
-  netProfit: 23000,
-  netProfitTrend: 21.0,
-  expenses: 38000,
-  expensesTrend: -4.2,
-  activeCustomers: 6,
-  customersTrend: 2,
-  cashBalance: 87420,
-};
-
-const MOCK_AR_AGING: ARAgingBucket[] = [
-  { bucket: 'Current', amount: 12400, count: 1 },
-  { bucket: '1-30 days', amount: 3200, count: 1 },
-  { bucket: '31-60 days', amount: 8750, count: 1 },
-  { bucket: '61-90 days', amount: 15600, count: 1 },
-  { bucket: '90+ days', amount: 0, count: 0 },
-];
-
 function padMonth(y: number, m0: number) {
   return `${y}-${String(m0 + 1).padStart(2, '0')}`;
 }
@@ -110,10 +90,8 @@ export function useDashboardKPIs() {
 
   return useQuery({
     queryKey: ['dashboard_kpis', orgId],
-    enabled: !isSupabaseConfigured || Boolean(orgId),
+    enabled: isSupabaseConfigured && Boolean(orgId),
     queryFn: async (): Promise<DashboardKPIs> => {
-      if (!isSupabaseConfigured) return MOCK_KPIS;
-
       const now = new Date();
       const y = now.getFullYear();
       const m = now.getMonth();
@@ -155,7 +133,6 @@ export function useDashboardKPIs() {
         cashBalance,
       };
     },
-    placeholderData: isSupabaseConfigured ? undefined : MOCK_KPIS,
     staleTime: 1000 * 60 * 2,
   });
 }
@@ -165,9 +142,8 @@ export function useARAgingData() {
 
   return useQuery({
     queryKey: ['ar_aging', orgId],
-    enabled: !isSupabaseConfigured || Boolean(orgId),
+    enabled: isSupabaseConfigured && Boolean(orgId),
     queryFn: async (): Promise<ARAgingBucket[]> => {
-      if (!isSupabaseConfigured) return MOCK_AR_AGING;
       const today = new Date();
       const { data, error } = await supabase
         .from('invoices')
@@ -192,29 +168,16 @@ export function useARAgingData() {
       }
       return buckets;
     },
-    placeholderData: isSupabaseConfigured ? undefined : MOCK_AR_AGING,
   });
 }
-
-const DEMO_CASH_FLOW_STATIC: CashFlowChartPoint[] = [
-  { month: 'Nov', income: 42000, expenses: 31000, forecast: null },
-  { month: 'Dec', income: 48000, expenses: 32500, forecast: null },
-  { month: 'Jan', income: 45500, expenses: 31800, forecast: null },
-  { month: 'Feb', income: 52200, expenses: 33200, forecast: null },
-  { month: 'Mar', income: 58400, expenses: 36100, forecast: null },
-  { month: 'Apr', income: 53200, expenses: 34400, forecast: null },
-];
 
 export function useCashFlowChartData() {
   const orgId = useCompanyStore((s) => s.activeOrgId);
 
   return useQuery({
     queryKey: ['cashflow_chart', orgId],
-    enabled: !isSupabaseConfigured || Boolean(orgId),
+    enabled: isSupabaseConfigured && Boolean(orgId),
     queryFn: async (): Promise<CashFlowChartPoint[]> => {
-      if (!isSupabaseConfigured) {
-        return DEMO_CASH_FLOW_STATIC;
-      }
       const now = new Date();
       const start = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString().slice(0, 10);
       const { data, error } = await supabase
@@ -226,6 +189,5 @@ export function useCashFlowChartData() {
       if (error) throw error;
       return buildCashFlowSeriesFromRows(data ?? [], 6);
     },
-    placeholderData: isSupabaseConfigured ? undefined : DEMO_CASH_FLOW_STATIC,
   });
 }

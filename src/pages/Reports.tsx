@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { CommandPalette } from "@/components/CommandPalette";
-import { BarChart3, PieChart as PieChartIcon, TrendingUp, FileText, Download, Loader2 } from "lucide-react";
+import { BarChart3, PieChart as PieChartIcon, TrendingUp, FileText, Download, Loader2, Database } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -62,6 +62,14 @@ function PLTab() {
   const { data: plData, isLoading } = useProfitAndLoss();
 
   if (isLoading || !plData) return <LoadingState />;
+  if (plData.length === 0) {
+    return (
+      <div className="glass-card rounded-2xl p-10 text-center">
+        <Database className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">No report data yet. Import transactions to generate reports.</p>
+      </div>
+    );
+  }
 
   const totalRevenue = plData.reduce((s, d) => s + d.revenue, 0);
   const totalExpenses = plData.reduce((s, d) => s + d.expenses, 0);
@@ -222,6 +230,14 @@ function ExpenseBreakdownTab() {
   const { data: expenses, isLoading } = useExpenseBreakdown();
 
   if (isLoading || !expenses) return <LoadingState />;
+  if (expenses.length === 0) {
+    return (
+      <div className="glass-card rounded-2xl p-10 text-center">
+        <Database className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">No expenses found yet.</p>
+      </div>
+    );
+  }
 
   const totalAmount = expenses.reduce((s, e) => s + e.amount, 0);
 
@@ -300,6 +316,14 @@ function CashFlowTab() {
   const { data: cashData, isLoading } = useCashFlow();
 
   if (isLoading || !cashData) return <LoadingState />;
+  if (cashData.length === 0) {
+    return (
+      <div className="glass-card rounded-2xl p-10 text-center">
+        <Database className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">No cash flow data yet.</p>
+      </div>
+    );
+  }
 
   const totalInflow = cashData.reduce((s, d) => s + d.revenue, 0);
   const totalOutflow = cashData.reduce((s, d) => s + d.expenses, 0);
