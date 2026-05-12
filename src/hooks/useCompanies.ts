@@ -57,9 +57,12 @@ export interface Company {
 export function mapOrganizationRow(org: Record<string, unknown>, role?: string): Company {
   const taxId = org.tax_id;
   const legacyEin = org.ein;
+  const id = String(org.id);
+  const rawName = String(org.name ?? '').trim();
+  const safeName = rawName || `Company ${id.slice(0, 8)}`;
   return {
-    id: String(org.id),
-    name: String(org.name ?? ''),
+    id,
+    name: safeName,
     entity_type: (org.entity_type as string) ?? 'llc',
     accounting_method: (org.accounting_method as string) ?? 'cash',
     fiscal_year_start: typeof org.fiscal_year_start === 'number' ? org.fiscal_year_start : Number(org.fiscal_year_start ?? 1) || 1,
@@ -79,16 +82,27 @@ export function useCompanies() {
     queryKey: ['companies', user?.id],
     queryFn: async (): Promise<Company[]> => {
       if (!isSupabaseConfigured || !user) return [];
-      const { data, error } = await supabase.from('company_memberships').select('role, organizations(*)').eq('user_id', user.id);
+      // Prefer single RPC to avoid PostgREST embed + RLS edge cases.
+      const { data, error } = await supabase.rpc('my_companies');
       if (error) throw error;
-      return (data ?? [])
-        .filter((m: { organizations?: { id?: string } | null }) => {
-          const o = m.organizations;
-          return o && typeof o === 'object' && typeof (o as { id?: string }).id === 'string';
-        })
-        .map((m: { role?: string; organizations: Record<string, unknown> }) =>
-          mapOrganizationRow(m.organizations ?? {}, m.role),
-        );
+      return (data ?? []).map((row) =>
+        mapOrganizationRow(
+          {
+            id: row.id,
+            name: row.name,
+            entity_type: row.entity_type,
+            accounting_method: row.accounting_method,
+            fiscal_year_start: row.fiscal_year_start,
+            timezone: row.timezone,
+            tax_id: row.tax_id,
+            plan: row.plan,
+            subscription_status: row.subscription_status,
+            trial_ends_at: row.trial_ends_at,
+            logo_url: row.logo_url,
+          },
+          row.role
+        )
+      );
     },
   });
 }

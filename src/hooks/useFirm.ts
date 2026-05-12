@@ -16,6 +16,25 @@ export function useMyFirm() {
   });
 }
 
+/** One row per owner; idempotent if a firm already exists (returns existing id). */
+export function useEnsureMyAccountingFirm() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { name: string; ein?: string }) => {
+      if (!isSupabaseConfigured) throw new Error('Supabase is not configured.');
+      const { data, error } = await supabase.rpc('ensure_my_accounting_firm', {
+        p_ein: input.ein?.trim() || null,
+        p_name: input.name.trim(),
+      });
+      if (error) throw error;
+      return data as string;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['my_firm'] });
+    },
+  });
+}
+
 /** Flow A: accountant-owned firm creates a client company (org) linked via managed_by_firm_id */
 export function useCreateClientCompany() {
   const qc = useQueryClient();

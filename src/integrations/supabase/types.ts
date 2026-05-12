@@ -1031,9 +1031,30 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      ensure_my_accounting_firm: {
+        Args: { p_ein?: string | null; p_name: string };
+        Returns: string;
+      };
       generate_default_coa: {
         Args: { p_org_id: string; p_entity_type: string };
         Returns: void;
+      };
+      my_companies: {
+        Args: Record<PropertyKey, never>;
+        Returns: Array<{
+          accounting_method: string;
+          entity_type: string;
+          fiscal_year_start: number;
+          id: string;
+          logo_url: string | null;
+          name: string;
+          plan: Database["public"]["Enums"]["plan_name"];
+          role: Database["public"]["Enums"]["user_role"];
+          subscription_status: Database["public"]["Enums"]["subscription_status"];
+          tax_id: string | null;
+          timezone: string;
+          trial_ends_at: string | null;
+        }>;
       };
     };
     Enums: {

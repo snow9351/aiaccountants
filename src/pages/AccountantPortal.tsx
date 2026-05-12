@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { CommandPalette } from "@/components/CommandPalette";
 import { useTeamMembers, useClientRequests, useInviteTeamMember, useCreateClientRequest, useUpdateClientRequest, usePendingInvitations } from "@/hooks/useAccountantPortal";
-import { useCreateClientCompany, useMyFirm } from "@/hooks/useFirm";
+import { useCreateClientCompany, useEnsureMyAccountingFirm, useMyFirm } from "@/hooks/useFirm";
 import { useOrgId, useCompanyStore } from "@/hooks/useCompanies";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -43,9 +43,11 @@ export default function AccountantPortal() {
   const { user } = useAuth();
   const orgId = useOrgId();
   const { data: members = [] } = useTeamMembers(orgId);
+  const otherMembers = members.filter((m) => m.user_id !== user?.id);
   const { data: pendingInvites = [] } = usePendingInvitations(orgId);
   const { data: requests = [] } = useClientRequests(orgId);
   const { data: firm, isPending: firmRowLoading } = useMyFirm();
+  const ensureMyAccountingFirm = useEnsureMyAccountingFirm();
   const inviteMember = useInviteTeamMember();
   const createClientCompany = useCreateClientCompany();
   const createRequest = useCreateClientRequest();
@@ -54,6 +56,8 @@ export default function AccountantPortal() {
   const [tab, setTab] = useState<"team" | "requests">("team");
   const [showInvite, setShowInvite] = useState(false);
   const [showNewClient, setShowNewClient] = useState(false);
+  const [showRegisterFirm, setShowRegisterFirm] = useState(false);
+  const [registerFirmForm, setRegisterFirmForm] = useState({ name: "", ein: "" });
   const [showRequest, setShowRequest] = useState(false);
   const [inviteForm, setInviteForm] = useState({ email: "", role: "bookkeeper" as TeamMember['role'] });
   const [newClientForm, setNewClientForm] = useState({
@@ -78,7 +82,7 @@ export default function AccountantPortal() {
     if (flowAOwnerInvite && !firm?.id) {
       toast({
         title: "Firm required",
-        description: "Register as an accounting firm (signup) or create a client company under your firm before inviting an owner.",
+        description: "Open Register my firm in the Accountant Portal (banner or New client company), then invite a business owner.",
         variant: "destructive",
       });
       return;
@@ -97,6 +101,28 @@ export default function AccountantPortal() {
       });
       setShowInvite(false);
       setInviteForm({ email: "", role: "bookkeeper" });
+    } catch (err) {
+      toast({ title: "Failed", description: (err as Error).message, variant: "destructive" });
+    }
+  };
+
+  const handleRegisterFirm = async () => {
+    if (!registerFirmForm.name.trim()) {
+      toast({ title: "Firm name required", variant: "destructive" });
+      return;
+    }
+    try {
+      await ensureMyAccountingFirm.mutateAsync({
+        name: registerFirmForm.name.trim(),
+        ein: registerFirmForm.ein.trim() || undefined,
+      });
+      toast({
+        title: "Accounting firm registered",
+        description: "You can create client companies under this firm.",
+      });
+      setShowRegisterFirm(false);
+      setRegisterFirmForm({ name: "", ein: "" });
+      setShowNewClient(true);
     } catch (err) {
       toast({ title: "Failed", description: (err as Error).message, variant: "destructive" });
     }
@@ -172,21 +198,54 @@ export default function AccountantPortal() {
       {!firmRowLoading && !firm?.id && (
         <Alert className="mb-6 rounded-2xl border-primary/20 bg-primary/5">
           <Info className="h-4 w-4 text-primary" />
-          <AlertTitle>Client companies live under an accounting firm</AlertTitle>
+          <AlertTitle>Register your accounting firm</AlertTitle>
           <AlertDescription className="text-muted-foreground">
             <p className="mt-1">
               The <strong>New client company</strong> action creates a separate set of books for each client, linked to your firm.
-              Your account must have an <strong>accounting firm</strong> profile (a row in <code className="text-xs">firms</code> where you are the owner).
+              Google sign-in creates a default business workspace only; add a firm profile once here (or sign up with email as <strong>Accounting firm</strong> on{" "}
+              <Link to="/login" className="font-medium text-primary underline underline-offset-2">Login</Link>
+              ).
             </p>
-            <p className="mt-2">
-              <strong>How to get it:</strong> sign out, open{" "}
-              <Link to="/login" className="font-medium text-primary underline underline-offset-2">
-                Sign up
-              </Link>
-              , choose <strong>Email</strong>, pick <strong>Accounting firm</strong>, enter your firm name (and optional EIN). Google signup always creates a single business workspace, not a firm practice profile.
-            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button type="button" size="sm" className="rounded-xl" onClick={() => setShowRegisterFirm(true)}>
+                Register my firm
+              </Button>
+            </div>
           </AlertDescription>
         </Alert>
+      )}
+
+      {!firmRowLoading && firm?.id && (
+        <div className="mb-6 glass-card rounded-2xl p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
+                <Briefcase className="h-4 w-4 text-primary" />
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Your accounting firm</p>
+                <p className="mt-1 font-display text-lg font-semibold text-foreground">{firm.name}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <span>
+                    <span className="font-medium text-foreground">Owner:</span>{" "}
+                    {user?.email ?? "—"}
+                  </span>
+                  <span>
+                    <span className="font-medium text-foreground">EIN:</span>{" "}
+                    {firm.ein ? firm.ein : "—"}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              className="rounded-xl"
+              onClick={() => setShowNewClient(true)}
+            >
+              <Briefcase className="h-4 w-4" /> New client company
+            </Button>
+          </div>
+        </div>
       )}
 
       <div className="mb-6 flex items-center justify-between">
@@ -209,13 +268,9 @@ export default function AccountantPortal() {
                 variant="outline"
                 className="gap-2 rounded-xl"
                 onClick={() => {
+                  if (firmRowLoading) return;
                   if (!firm?.id) {
-                    toast({
-                      title: "Accounting firm required first",
-                      description:
-                        "Sign up with email as “Accounting firm” (see the blue notice above), then return here. Google signup won’t create a firm profile.",
-                      variant: "destructive",
-                    });
+                    setShowRegisterFirm(true);
                     return;
                   }
                   setShowNewClient(true);
@@ -256,7 +311,7 @@ export default function AccountantPortal() {
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="glass-card rounded-2xl p-5">
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Team Members</p>
-          <p className="mt-1 font-display text-2xl font-bold text-primary">{members.filter(m => m.status === "active").length}</p>
+          <p className="mt-1 font-display text-2xl font-bold text-primary">{otherMembers.filter(m => m.status === "active").length}</p>
           <p className="mt-1 text-xs text-muted-foreground">{members.filter(m => m.status === "invited").length} pending invites</p>
         </div>
         <div className="glass-card rounded-2xl p-5">
@@ -303,7 +358,7 @@ export default function AccountantPortal() {
               </ul>
             </div>
           )}
-          {members.map(member => {
+          {otherMembers.map(member => {
             const role = roleConfig[member.role];
             const RoleIcon = role.icon;
             return (
@@ -421,6 +476,52 @@ export default function AccountantPortal() {
               <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setShowInvite(false)}>Cancel</Button>
               <Button className="flex-1 rounded-xl" onClick={handleInvite} disabled={inviteMember.isPending}>
                 {inviteMember.isPending ? "Sending..." : "Send Invite"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Register accounting firm (e.g. after Google signup) */}
+      <Dialog
+        open={showRegisterFirm}
+        onOpenChange={(open) => {
+          setShowRegisterFirm(open);
+          if (!open) setRegisterFirmForm({ name: "", ein: "" });
+        }}
+      >
+        <DialogContent className="sm:max-w-md rounded-2xl border-border/50 bg-card">
+          <DialogHeader>
+            <DialogTitle className="font-display text-lg">Register accounting firm</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <p className="text-sm text-muted-foreground">
+              This links client companies to your practice. Your existing workspace is unchanged.
+            </p>
+            <div className="space-y-1.5">
+              <Label>Firm name *</Label>
+              <Input
+                value={registerFirmForm.name}
+                onChange={(e) => setRegisterFirmForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="e.g. Smith & Associates CPA"
+                className="bg-background/50"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Firm EIN / Tax ID (optional)</Label>
+              <Input
+                value={registerFirmForm.ein}
+                onChange={(e) => setRegisterFirmForm((f) => ({ ...f, ein: e.target.value }))}
+                placeholder="12-3456789"
+                className="bg-background/50"
+              />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setShowRegisterFirm(false)}>
+                Cancel
+              </Button>
+              <Button className="flex-1 rounded-xl" onClick={() => void handleRegisterFirm()} disabled={ensureMyAccountingFirm.isPending}>
+                {ensureMyAccountingFirm.isPending ? "Saving…" : "Save & continue"}
               </Button>
             </div>
           </div>

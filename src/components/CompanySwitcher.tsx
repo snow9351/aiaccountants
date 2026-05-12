@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Building2, ChevronDown, Plus, Check, Loader2, AlertCircle } from "lucide-react";
+import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useCompanies, useCompanyStore } from "@/hooks/useCompanies";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -10,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useCreateCompany, type Company } from "@/hooks/useCompanies";
 import { useToast } from "@/hooks/use-toast";
+import { useMyFirm } from "@/hooks/useFirm";
+import { useAuth } from "@/contexts/AuthContext";
 
 function roleSubtitle(role: string | undefined): string {
   switch (role) {
@@ -28,10 +31,12 @@ function roleSubtitle(role: string | undefined): string {
 
 export function CompanySwitcher({ collapsed }: { collapsed: boolean }) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const { data, isLoading, isError, error, refetch } = useCompanies();
   const companies = (data ?? []).filter((c) => c.id && c.name);
   const { activeOrgId, setActiveOrgId } = useCompanyStore();
   const createCompany = useCreateCompany();
+  const { data: firm, isPending: firmLoading, isError: firmError } = useMyFirm();
 
   const [open, setOpen] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -40,10 +45,22 @@ export function CompanySwitcher({ collapsed }: { collapsed: boolean }) {
   const active = companies.find(c => c.id === activeOrgId) ?? companies[0];
 
   /**
-   * Owners can add another org. If the company list is empty (RLS misconfig, first visit, etc.),
-   * still offer "Add company" so the user can create a workspace; the mutation always inserts owner.
+   * Only owners can create standalone companies from the switcher.
+   * Accountants should create client companies from the Accountant Portal instead.
    */
-  const canAddCompany = companies.length === 0 || companies.some((c) => c.role === "owner");
+  const hasFirm = !!firm?.id;
+  // If firm is still loading, don't show actions that depend on it (prevents confusing flash).
+  const isOwnerSomewhere = companies.some((c) => c.role === "owner");
+  const onboarding = (user?.user_metadata as any)?.onboarding as string | undefined;
+  const skipDefaultWorkspace = (user?.user_metadata as any)?.skip_default_workspace as string | boolean | undefined;
+  const isAccountantPersona = onboarding === "accountant";
+  const isInviteOnlySignup = skipDefaultWorkspace === true || skipDefaultWorkspace === "true";
+
+  // Owners can always add companies; if the list is empty (fresh business signup / transient fetch),
+  // allow Add Company only for non-accountant personas to avoid encouraging accountants to create standalone orgs.
+  const canAddCompany =
+    !firmLoading &&
+    (isOwnerSomewhere || (companies.length === 0 && !hasFirm && !isAccountantPersona && !isInviteOnlySignup));
 
   const handleCreate = async () => {
     if (!form.name) { toast({ title: "Company name required", variant: "destructive" }); return; }
@@ -142,18 +159,65 @@ export function CompanySwitcher({ collapsed }: { collapsed: boolean }) {
                 </button>
               ))}
           </div>
-          {canAddCompany && !isLoading && (
+          {!isLoading && (
             <div className="border-t border-border/50 p-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setOpen(false);
-                  setShowCreateDialog(true);
-                }}
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-secondary/40 hover:text-foreground"
-              >
-                <Plus className="h-3.5 w-3.5" /> Add company
-              </button>
+              {firmLoading ? (
+                <div className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-muted-foreground opacity-70">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking firm…
+                </div>
+              ) : hasFirm ? (
+                <div className="space-y-1">
+                  <Link
+                    to="/accountant-portal"
+                    onClick={() => setOpen(false)}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs transition-colors",
+                      "text-muted-foreground hover:bg-secondary/40 hover:text-foreground"
+                    )}
+                  >
+                    <Plus className="h-3.5 w-3.5" /> New client company (Accountant Portal)
+                  </Link>
+                  {isOwnerSomewhere && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpen(false);
+                        setShowCreateDialog(true);
+                      }}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-secondary/40 hover:text-foreground"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Add company
+                    </button>
+                  )}
+                </div>
+              ) : firmError ? (
+                <div className="space-y-2 rounded-lg px-3 py-2">
+                  <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span>Couldn’t check firm profile. Refresh if you just registered a firm.</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full rounded-lg"
+                    onClick={() => void refetch()}
+                  >
+                    Refresh companies
+                  </Button>
+                </div>
+              ) : canAddCompany ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    setShowCreateDialog(true);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-secondary/40 hover:text-foreground"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add company
+                </button>
+              ) : null}
             </div>
           )}
         </PopoverContent>

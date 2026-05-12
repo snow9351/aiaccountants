@@ -273,7 +273,7 @@ function TeamAccessTab() {
   /** Demo placeholder only when Supabase is off; with Supabase, an empty list is real (or an error). */
   const displayMembers =
     members.length > 0
-      ? members
+      ? members.filter((m: any) => m.user_id !== user?.id)
       : !isSupabaseConfigured
         ? [
             {

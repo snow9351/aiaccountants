@@ -50,7 +50,10 @@ function mapMembershipRow(
   profile?: { email?: string; full_name?: string | null } | null,
 ): TeamMember {
   const email = profile?.email ?? '';
-  const name = (profile?.full_name && profile.full_name.trim()) || email || m.user_id.slice(0, 8);
+  const name =
+    (profile?.full_name && profile.full_name.trim()) ||
+    (email ? email.split('@')[0] : '') ||
+    `Member ${m.user_id.slice(0, 8)}`;
   return {
     id: m.id,
     org_id: m.org_id,

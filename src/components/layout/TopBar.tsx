@@ -1,17 +1,28 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Bell, Command, Plus, User, LogOut, Settings, Home, Menu } from "lucide-react";
+import { Search, Bell, Command, Plus, LogOut, Settings, Home, Menu, Briefcase, Shield, Users, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useAuth } from "@/contexts/AuthContext";
+import { useCompanies, useCompanyStore } from "@/hooks/useCompanies";
+import { useMyFirm } from "@/hooks/useFirm";
 
 export function TopBar({ onMenuToggle }: { onMenuToggle?: () => void }) {
   const navigate = useNavigate();
   const [showNewTx, setShowNewTx] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [txForm, setTxForm] = useState({ vendor: "", amount: "", description: "", type: "expense" });
+  const { user, signOut } = useAuth();
+  const { data: companies = [] } = useCompanies();
+  const { activeOrgId } = useCompanyStore();
+  const { data: firm } = useMyFirm();
+
+  const activeCompany = companies.find((c) => c.id === activeOrgId) ?? companies[0];
+  const activeRole = activeCompany?.role as string | undefined;
+  const isReadOnly = activeRole === "read_only";
 
   // Listen for sidebar "New Transaction" button
   useEffect(() => {
@@ -42,8 +53,32 @@ export function TopBar({ onMenuToggle }: { onMenuToggle?: () => void }) {
 
   const handleLogout = () => {
     toast({ title: "Logged out", description: "You've been signed out of AI Accountants." });
+    void signOut();
     navigate("/");
   };
+
+  const roleBadge = (() => {
+    switch (activeRole) {
+      case "owner":
+        return { label: "Owner", icon: Shield, className: "border-primary/30 bg-primary/10 text-primary" };
+      case "accountant":
+        return { label: "Accountant", icon: Briefcase, className: "border-success/30 bg-success/10 text-success" };
+      case "bookkeeper":
+        return { label: "Bookkeeper", icon: Users, className: "border-warning/30 bg-warning/10 text-warning" };
+      case "read_only":
+        return { label: "Read-only", icon: Eye, className: "border-border/60 bg-muted/40 text-muted-foreground" };
+      default:
+        return null;
+    }
+  })();
+
+  const initials =
+    (user?.user_metadata?.full_name ?? user?.email ?? "U")
+      .split(" ")
+      .map((n: string) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2) || "U";
 
   return (
     <>
@@ -67,11 +102,28 @@ export function TopBar({ onMenuToggle }: { onMenuToggle?: () => void }) {
           </button>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          {roleBadge && (
+            <div
+              className={`flex items-center gap-2 rounded-full border px-2.5 sm:px-3 py-1.5 text-xs font-medium ${roleBadge.className}`}
+              title={`Role: ${roleBadge.label}${firm?.id ? " • Firm profile" : ""}`}
+            >
+              <roleBadge.icon className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{roleBadge.label}</span>
+              {firm?.id && <span className="rounded-full bg-background/40 px-2 py-0.5 text-[10px]">Firm</span>}
+            </div>
+          )}
+
           <Button
             size="sm"
             className="gap-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 glow-primary"
-            onClick={() => setShowNewTx(true)}
+            onClick={() => {
+              if (isReadOnly) {
+                toast({ title: "Read-only access", description: "You don't have permission to create transactions in this company.", variant: "destructive" });
+                return;
+              }
+              setShowNewTx(true);
+            }}
           >
             <Plus className="h-4 w-4" />
             New Transaction
@@ -109,13 +161,26 @@ export function TopBar({ onMenuToggle }: { onMenuToggle?: () => void }) {
           <Popover>
             <PopoverTrigger asChild>
               <button className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-accent text-xs font-bold text-primary-foreground transition-all hover:opacity-90">
-                JD
+                {initials}
               </button>
             </PopoverTrigger>
             <PopoverContent className="glass-card w-56 border-border/50 p-2" align="end">
               <div className="border-b border-border/30 px-3 py-3 mb-1">
-                <p className="text-sm font-semibold text-foreground">Jordan Davis</p>
-                <p className="text-xs text-muted-foreground">jordan@aiaccountants.ai</p>
+                <p className="text-sm font-semibold text-foreground">{user?.user_metadata?.full_name ?? user?.email?.split("@")[0] ?? "User"}</p>
+                <p className="text-xs text-muted-foreground">{user?.email ?? ""}</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {roleBadge && (
+                    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${roleBadge.className}`}>
+                      <roleBadge.icon className="h-3 w-3" />
+                      {roleBadge.label}
+                    </span>
+                  )}
+                  {firm?.id && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      Firm profile
+                    </span>
+                  )}
+                </div>
               </div>
               <button
                 onClick={() => navigate("/settings")}

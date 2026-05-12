@@ -30,6 +30,8 @@ import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { CompanySwitcher } from "@/components/CompanySwitcher";
+import { useCompanies, useCompanyStore } from "@/hooks/useCompanies";
+import { useMyFirm } from "@/hooks/useFirm";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
@@ -79,6 +81,17 @@ export function AppSidebar({ mobileOpen, onClose }: { mobileOpen?: boolean; onCl
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const { data: companies = [] } = useCompanies();
+  const { activeOrgId } = useCompanyStore();
+  const { data: firm } = useMyFirm();
+
+  const activeCompany = companies.find((c) => c.id === activeOrgId) ?? companies[0];
+  const activeRole = activeCompany?.role as string | undefined;
+  const isOwner = activeRole === "owner";
+  const isAccountant = activeRole === "accountant";
+  const isBookkeeper = activeRole === "bookkeeper";
+  const isReadOnly = activeRole === "read_only";
+  const hasFirm = !!firm?.id;
 
   const handleLogout = async () => {
     await signOut();
@@ -140,12 +153,17 @@ export function AppSidebar({ mobileOpen, onClose }: { mobileOpen?: boolean; onCl
       <div className="px-3 pt-3 pb-2">
         <button
           onClick={() => {
+            if (isReadOnly) {
+              toast({ title: "Read-only access", description: "You don't have permission to create transactions in this company.", variant: "destructive" });
+              return;
+            }
             const event = new CustomEvent('open-new-transaction');
             window.dispatchEvent(event);
           }}
           className={cn(
             "flex w-full items-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground transition-all hover:opacity-90 glow-primary",
-            collapsed && "justify-center"
+            collapsed && "justify-center",
+            isReadOnly && "opacity-60"
           )}
         >
           <Plus className="h-4 w-4 shrink-0" />
@@ -173,7 +191,8 @@ export function AppSidebar({ mobileOpen, onClose }: { mobileOpen?: boolean; onCl
           </p>
         )}
         {collapsed && <div className="my-2 border-t border-border/30" />}
-        {advancedItems.map(renderNavItem)}
+        {/* Bookkeepers/read-only should not see advanced/admin-heavy features by default */}
+        {!isBookkeeper && !isReadOnly && advancedItems.map(renderNavItem)}
 
         {/* AI & Billing section */}
         {!collapsed && (
@@ -182,7 +201,13 @@ export function AppSidebar({ mobileOpen, onClose }: { mobileOpen?: boolean; onCl
           </p>
         )}
         {collapsed && <div className="my-2 border-t border-border/30" />}
-        {aiItems.map(renderNavItem)}
+        {aiItems
+          .filter((item) => {
+            if (item.path === "/accountant-portal") return isAccountant || hasFirm;
+            if (item.path === "/pricing") return isOwner || isAccountant;
+            return true;
+          })
+          .map(renderNavItem)}
       </nav>
 
       {/* Bottom nav */}

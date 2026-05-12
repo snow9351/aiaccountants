@@ -187,8 +187,9 @@ export default function Login() {
                 Continue with Google
               </Button>
               <p className="mt-2 text-xs text-muted-foreground text-center">
-                Google always provisions a default company workspace. To register as an accounting firm without that extra
-                company, use email signup and select <span className="font-medium">Accounting firm</span>.
+                Google creates a default company workspace. To register as an accounting firm without that flow, use email signup and select{" "}
+                <span className="font-medium">Accounting firm</span>. If you already use Google, open{" "}
+                <span className="font-medium">Accountant Portal</span> and use <span className="font-medium">Register my firm</span> there.
               </p>
               <div className="relative my-4">
                 <div className="absolute inset-0 flex items-center">
