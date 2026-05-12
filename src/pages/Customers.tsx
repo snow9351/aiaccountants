@@ -80,7 +80,7 @@ function scoreBg(score: number) {
 export default function Customers() {
   const { toast } = useToast();
   const orgId = useOrgId();
-  const { data: customers = [] } = useCustomers();
+  const { data: customers = [] } = useCustomers({ orgId });
   const createCustomer = useCreateCustomer();
 
   const [search, setSearch] = useState("");

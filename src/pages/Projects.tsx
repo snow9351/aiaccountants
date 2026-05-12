@@ -31,7 +31,7 @@ export default function Projects() {
   const { toast } = useToast();
   const orgId = useOrgId();
   const { data: projects = [] } = useProjects();
-  const { data: customers = [] } = useCustomers();
+  const { data: customers = [] } = useCustomers({ orgId });
   const createProject = useCreateProject();
 
   const [activeTab, setActiveTab] = useState<string>("all");

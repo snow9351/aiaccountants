@@ -3,6 +3,8 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { CommandPalette } from "@/components/CommandPalette";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCompanies, useUpdateCompany, useCompanyMembers, useOrgId } from "@/hooks/useCompanies";
+import { usePendingInvitations } from "@/hooks/useAccountantPortal";
+import { isSupabaseConfigured } from "@/integrations/supabase/client";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
@@ -237,7 +239,8 @@ function CompanyProfileTab() {
 /* ------------------------------------------------------------------ */
 function TeamAccessTab() {
   const orgId = useOrgId();
-  const { data: members, isLoading } = useCompanyMembers(orgId);
+  const { data: members = [], isLoading, isError, error } = useCompanyMembers(orgId);
+  const { data: pendingInvites = [] } = usePendingInvitations(orgId);
   const { user } = useAuth();
 
   const roleIcon = (role: string) => {
@@ -245,6 +248,8 @@ function TeamAccessTab() {
       case "owner": return <Crown className="h-3 w-3" />;
       case "admin": return <UserCog className="h-3 w-3" />;
       case "accountant": return <ClipboardCheck className="h-3 w-3" />;
+      case "bookkeeper": return <Users className="h-3 w-3" />;
+      case "read_only": return <Eye className="h-3 w-3" />;
       case "viewer": return <Eye className="h-3 w-3" />;
       case "ai_agent": return <Bot className="h-3 w-3" />;
       default: return <Users className="h-3 w-3" />;
@@ -256,22 +261,30 @@ function TeamAccessTab() {
       case "owner": return "bg-amber-500/10 text-amber-400 border-amber-500/20";
       case "admin": return "bg-blue-500/10 text-blue-400 border-blue-500/20";
       case "accountant": return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+      case "bookkeeper": return "bg-sky-500/10 text-sky-400 border-sky-500/20";
+      case "read_only": return "bg-slate-500/10 text-slate-400 border-slate-500/20";
       case "viewer": return "bg-slate-500/10 text-slate-400 border-slate-500/20";
       case "ai_agent": return "bg-purple-500/10 text-purple-400 border-purple-500/20";
       default: return "bg-secondary text-muted-foreground";
     }
   };
 
-  // In mock/demo mode, show the current user as a team member
-  const displayMembers = members && members.length > 0
-    ? members
-    : [
-        {
-          user_id: user?.id ?? "demo",
-          role: "owner",
-          users: { email: user?.email ?? "jordan@connectcash.ai", user_metadata: user?.user_metadata ?? { full_name: "Jordan Davis" } },
-        },
-      ];
+  /** Demo placeholder only when Supabase is off; with Supabase, an empty list is real (or an error). */
+  const displayMembers =
+    members.length > 0
+      ? members
+      : !isSupabaseConfigured
+        ? [
+            {
+              user_id: user?.id ?? "demo",
+              role: "owner",
+              users: {
+                email: user?.email ?? "jordan@connectcash.ai",
+                user_metadata: user?.user_metadata ?? { full_name: "Jordan Davis" },
+              },
+            },
+          ]
+        : [];
 
   return (
     <div className="space-y-6">
@@ -283,7 +296,10 @@ function TeamAccessTab() {
             </div>
             <div>
               <h3 className="font-display text-lg font-semibold text-foreground">Team Members</h3>
-              <p className="text-sm text-muted-foreground">{displayMembers.length} member{displayMembers.length !== 1 ? "s" : ""} on this organization</p>
+              <p className="text-sm text-muted-foreground">
+                {displayMembers.length} active member{displayMembers.length !== 1 ? "s" : ""}
+                {pendingInvites.length > 0 ? ` · ${pendingInvites.length} pending invite${pendingInvites.length !== 1 ? "s" : ""}` : ""}
+              </p>
             </div>
           </div>
           <Link to="/accountant-portal">
@@ -293,6 +309,12 @@ function TeamAccessTab() {
             </Button>
           </Link>
         </div>
+
+        {isError && (
+          <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            Could not load team: {(error as Error)?.message ?? "Unknown error"}
+          </div>
+        )}
 
         {isLoading ? (
           <div className="space-y-3">
@@ -334,6 +356,34 @@ function TeamAccessTab() {
               );
             })}
           </div>
+        )}
+
+        {!isLoading && !isError && isSupabaseConfigured && pendingInvites.length > 0 && (
+          <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Pending invitations</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              These people are not listed as members until they accept the invite link.
+            </p>
+            <ul className="mt-3 space-y-2">
+              {pendingInvites.map((inv) => (
+                <li
+                  key={inv.id}
+                  className="flex items-center justify-between rounded-lg border border-border/40 bg-background/50 px-3 py-2 text-sm"
+                >
+                  <span className="font-medium text-foreground">{inv.email}</span>
+                  <Badge variant="outline" className="capitalize text-[10px]">
+                    {inv.role.replace("_", " ")}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {!isLoading && !isError && isSupabaseConfigured && displayMembers.length === 0 && pendingInvites.length === 0 && (
+          <p className="rounded-xl border border-dashed border-border/50 bg-secondary/10 px-4 py-6 text-center text-sm text-muted-foreground">
+            No members in this organization yet. Pending invites appear below once sent; after someone accepts, they show as active members. Use the Accountant Portal to invite people.
+          </p>
         )}
 
         <div className="mt-4 rounded-xl border border-dashed border-border/50 bg-secondary/10 p-4 text-center">

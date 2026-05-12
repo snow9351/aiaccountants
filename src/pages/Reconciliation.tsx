@@ -65,7 +65,7 @@ export default function Reconciliation() {
   const { toast } = useToast();
   const orgId = useOrgId();
   const { data: periods = [] } = useReconciliationPeriods(orgId);
-  const { data: bankAccounts = [] } = useBankAccounts();
+  const { data: bankAccounts = [] } = useBankAccounts({ orgId });
   const createPeriod = useCreateReconciliationPeriod();
   const lockPeriod = useLockReconciliation();
   const updatePeriod = useUpdateReconciliation();

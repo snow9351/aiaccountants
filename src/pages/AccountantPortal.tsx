@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { Users, UserPlus, MessageSquare, Clock, CheckCircle, AlertCircle, Mail, Shield, Eye, Briefcase } from "lucide-react";
+import { Users, UserPlus, MessageSquare, Clock, CheckCircle, AlertCircle, Mail, Shield, Eye, Briefcase, Info } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,8 +11,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { CommandPalette } from "@/components/CommandPalette";
-import { useTeamMembers, useClientRequests, useInviteTeamMember, useCreateClientRequest, useUpdateClientRequest } from "@/hooks/useAccountantPortal";
-import { useOrgId } from "@/hooks/useCompanies";
+import { useTeamMembers, useClientRequests, useInviteTeamMember, useCreateClientRequest, useUpdateClientRequest, usePendingInvitations } from "@/hooks/useAccountantPortal";
+import { useCreateClientCompany, useMyFirm } from "@/hooks/useFirm";
+import { useOrgId, useCompanyStore } from "@/hooks/useCompanies";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import type { TeamMember, ClientRequest } from "@/hooks/useAccountantPortal";
@@ -40,15 +43,25 @@ export default function AccountantPortal() {
   const { user } = useAuth();
   const orgId = useOrgId();
   const { data: members = [] } = useTeamMembers(orgId);
+  const { data: pendingInvites = [] } = usePendingInvitations(orgId);
   const { data: requests = [] } = useClientRequests(orgId);
+  const { data: firm, isPending: firmRowLoading } = useMyFirm();
   const inviteMember = useInviteTeamMember();
+  const createClientCompany = useCreateClientCompany();
   const createRequest = useCreateClientRequest();
   const updateRequest = useUpdateClientRequest();
 
   const [tab, setTab] = useState<"team" | "requests">("team");
   const [showInvite, setShowInvite] = useState(false);
+  const [showNewClient, setShowNewClient] = useState(false);
   const [showRequest, setShowRequest] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ name: "", email: "", role: "bookkeeper" as TeamMember['role'] });
+  const [inviteForm, setInviteForm] = useState({ email: "", role: "bookkeeper" as TeamMember['role'] });
+  const [newClientForm, setNewClientForm] = useState({
+    name: "",
+    entity_type: "llc",
+    accounting_method: "accrual",
+    tax_id: "",
+  });
   const [requestForm, setRequestForm] = useState({ title: "", description: "", priority: "medium" as ClientRequest['priority'], category: "question" as ClientRequest['category'] });
 
   const openRequests = requests.filter(r => r.status === "open" || r.status === "in_progress").length;
@@ -58,14 +71,53 @@ export default function AccountantPortal() {
       toast({ title: "Select a company first", description: "Create or select a company in Settings before inviting team members.", variant: "destructive" });
       return;
     }
-    if (!inviteForm.email || !inviteForm.name) {
-      toast({ title: "Name and email required", variant: "destructive" }); return;
+    if (!inviteForm.email.trim()) {
+      toast({ title: "Email required", variant: "destructive" }); return;
+    }
+    const flowAOwnerInvite = inviteForm.role === "owner";
+    if (flowAOwnerInvite && !firm?.id) {
+      toast({
+        title: "Firm required",
+        description: "Register as an accounting firm (signup) or create a client company under your firm before inviting an owner.",
+        variant: "destructive",
+      });
+      return;
     }
     try {
-      await inviteMember.mutateAsync({ org_id: orgId, ...inviteForm });
-      toast({ title: "Invitation sent", description: `Invite sent to ${inviteForm.email}` });
+      const row = await inviteMember.mutateAsync({
+        org_id: orgId,
+        email: inviteForm.email.trim(),
+        role: inviteForm.role,
+        firm_id: flowAOwnerInvite ? firm?.id ?? null : null,
+      });
+      const link = `${window.location.origin}/invite/${row.token}`;
+      toast({
+        title: "Invitation created",
+        description: `Share this link with ${inviteForm.email}: ${link}`,
+      });
       setShowInvite(false);
-      setInviteForm({ name: "", email: "", role: "bookkeeper" });
+      setInviteForm({ email: "", role: "bookkeeper" });
+    } catch (err) {
+      toast({ title: "Failed", description: (err as Error).message, variant: "destructive" });
+    }
+  };
+
+  const handleCreateClientCompany = async () => {
+    if (!newClientForm.name.trim()) {
+      toast({ title: "Company name required", variant: "destructive" });
+      return;
+    }
+    try {
+      const id = await createClientCompany.mutateAsync({
+        name: newClientForm.name.trim(),
+        entity_type: newClientForm.entity_type,
+        accounting_method: newClientForm.accounting_method,
+        tax_id: newClientForm.tax_id.trim() || undefined,
+      });
+      useCompanyStore.getState().setActiveOrgId(id);
+      toast({ title: "Client company created", description: "You're now switched into this company's books." });
+      setShowNewClient(false);
+      setNewClientForm({ name: "", entity_type: "llc", accounting_method: "accrual", tax_id: "" });
     } catch (err) {
       toast({ title: "Failed", description: (err as Error).message, variant: "destructive" });
     }
@@ -117,6 +169,26 @@ export default function AccountantPortal() {
     <AppLayout>
       <CommandPalette />
 
+      {!firmRowLoading && !firm?.id && (
+        <Alert className="mb-6 rounded-2xl border-primary/20 bg-primary/5">
+          <Info className="h-4 w-4 text-primary" />
+          <AlertTitle>Client companies live under an accounting firm</AlertTitle>
+          <AlertDescription className="text-muted-foreground">
+            <p className="mt-1">
+              The <strong>New client company</strong> action creates a separate set of books for each client, linked to your firm.
+              Your account must have an <strong>accounting firm</strong> profile (a row in <code className="text-xs">firms</code> where you are the owner).
+            </p>
+            <p className="mt-2">
+              <strong>How to get it:</strong> sign out, open{" "}
+              <Link to="/login" className="font-medium text-primary underline underline-offset-2">
+                Sign up
+              </Link>
+              , choose <strong>Email</strong>, pick <strong>Accounting firm</strong>, enter your firm name (and optional EIN). Google signup always creates a single business workspace, not a firm practice profile.
+            </p>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
@@ -124,14 +196,37 @@ export default function AccountantPortal() {
           </div>
           <div>
             <h1 className="font-display text-2xl font-bold text-foreground">Accountant Portal</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">Team collaboration, requests, and access management</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Client companies under your firm, team invites, and requests
+            </p>
           </div>
         </div>
         <div className="flex gap-2">
           {tab === "team" && (
-            <Button size="sm" className="gap-2 rounded-xl" onClick={() => setShowInvite(true)}>
-              <UserPlus className="h-4 w-4" /> Invite
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-2 rounded-xl"
+                onClick={() => {
+                  if (!firm?.id) {
+                    toast({
+                      title: "Accounting firm required first",
+                      description:
+                        "Sign up with email as “Accounting firm” (see the blue notice above), then return here. Google signup won’t create a firm profile.",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  setShowNewClient(true);
+                }}
+              >
+                <Briefcase className="h-4 w-4" /> New client company
+              </Button>
+              <Button size="sm" className="gap-2 rounded-xl" onClick={() => setShowInvite(true)}>
+                <UserPlus className="h-4 w-4" /> Invite
+              </Button>
+            </>
           )}
           {tab === "requests" && (
             <Button size="sm" className="gap-2 rounded-xl" onClick={() => setShowRequest(true)}>
@@ -181,6 +276,31 @@ export default function AccountantPortal() {
             <div className="glass-card rounded-2xl p-8 text-center">
               <p className="text-sm font-medium text-foreground">No company selected</p>
               <p className="mt-1 text-sm text-muted-foreground">Go to Settings and create/select a company to manage your team.</p>
+            </div>
+          )}
+          {pendingInvites.length > 0 && (
+            <div className="glass-card rounded-2xl p-5 border border-dashed border-border/60">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">Pending invitations</p>
+              <ul className="space-y-2">
+                {pendingInvites.map((inv) => (
+                  <li key={inv.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span className="text-foreground">{inv.email}</span>
+                    <span className="text-xs text-muted-foreground capitalize">{inv.role.replace("_", " ")}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 rounded-lg text-xs"
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(`${window.location.origin}/invite/${inv.token}`);
+                        toast({ title: "Link copied" });
+                      }}
+                    >
+                      Copy link
+                    </Button>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
           {members.map(member => {
@@ -276,31 +396,89 @@ export default function AccountantPortal() {
           <DialogHeader><DialogTitle className="font-display text-lg">Invite Team Member</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="space-y-1.5">
-              <Label>Name *</Label>
-              <Input value={inviteForm.name} onChange={e => setInviteForm(f => ({ ...f, name: e.target.value }))} placeholder="Sarah Chen" className="bg-background/50" />
-            </div>
-            <div className="space-y-1.5">
               <Label>Email *</Label>
-              <Input type="email" value={inviteForm.email} onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))} placeholder="sarah@cpafirm.com" className="bg-background/50" />
+              <Input type="email" value={inviteForm.email} onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))} placeholder="client@business.com" className="bg-background/50" />
             </div>
             <div className="space-y-1.5">
               <Label>Role</Label>
               <Select value={inviteForm.role} onValueChange={(v: TeamMember['role']) => setInviteForm(f => ({ ...f, role: v }))}>
                 <SelectTrigger className="bg-background/50"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="accountant">Accountant (Full access)</SelectItem>
-                  <SelectItem value="bookkeeper">Bookkeeper (Data entry + reports)</SelectItem>
-                  <SelectItem value="read_only">Read Only (View reports only)</SelectItem>
+                  <SelectItem value="owner">Business owner (claim this company)</SelectItem>
+                  <SelectItem value="accountant">Accountant (full edit)</SelectItem>
+                  <SelectItem value="bookkeeper">Bookkeeper</SelectItem>
+                  <SelectItem value="read_only">Read only</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="rounded-xl border border-border/30 bg-secondary/20 p-3">
-              <p className="text-xs text-muted-foreground">An invitation link will be sent via email. It expires in 7 days.</p>
+              <p className="text-xs text-muted-foreground">
+                We generate a secure link you can share (copy from the confirmation). Email delivery can be wired separately.
+                Expires in 7 days.
+              </p>
             </div>
             <div className="flex gap-3 pt-2">
               <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setShowInvite(false)}>Cancel</Button>
               <Button className="flex-1 rounded-xl" onClick={handleInvite} disabled={inviteMember.isPending}>
                 {inviteMember.isPending ? "Sending..." : "Send Invite"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* New client company (Flow A) */}
+      <Dialog open={showNewClient} onOpenChange={setShowNewClient}>
+        <DialogContent className="sm:max-w-md rounded-2xl border-border/50 bg-card">
+          <DialogHeader><DialogTitle className="font-display text-lg">New client company</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label>Company legal name *</Label>
+              <Input
+                value={newClientForm.name}
+                onChange={(e) => setNewClientForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="Acme Holdings LLC"
+                className="bg-background/50"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Entity</Label>
+                <Select value={newClientForm.entity_type} onValueChange={(v) => setNewClientForm((f) => ({ ...f, entity_type: v }))}>
+                  <SelectTrigger className="bg-background/50"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="llc">LLC</SelectItem>
+                    <SelectItem value="s_corp">S Corp</SelectItem>
+                    <SelectItem value="c_corp">C Corp</SelectItem>
+                    <SelectItem value="sole_prop">Sole prop</SelectItem>
+                    <SelectItem value="partnership">Partnership</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Books</Label>
+                <Select value={newClientForm.accounting_method} onValueChange={(v) => setNewClientForm((f) => ({ ...f, accounting_method: v }))}>
+                  <SelectTrigger className="bg-background/50"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="accrual">Accrual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>EIN / Tax ID (optional)</Label>
+              <Input
+                value={newClientForm.tax_id}
+                onChange={(e) => setNewClientForm((f) => ({ ...f, tax_id: e.target.value }))}
+                placeholder="12-3456789"
+                className="bg-background/50"
+              />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setShowNewClient(false)}>Cancel</Button>
+              <Button className="flex-1 rounded-xl" onClick={() => void handleCreateClientCompany()} disabled={createClientCompany.isPending}>
+                {createClientCompany.isPending ? "Creating…" : "Create"}
               </Button>
             </div>
           </div>

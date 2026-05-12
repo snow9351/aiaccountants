@@ -81,9 +81,14 @@ export function useCompanies() {
       if (!isSupabaseConfigured || !user) return [];
       const { data, error } = await supabase.from('company_memberships').select('role, organizations(*)').eq('user_id', user.id);
       if (error) throw error;
-      return (data ?? []).map((m: { role?: string; organizations: Record<string, unknown> }) =>
-        mapOrganizationRow(m.organizations ?? {}, m.role),
-      );
+      return (data ?? [])
+        .filter((m: { organizations?: { id?: string } | null }) => {
+          const o = m.organizations;
+          return o && typeof o === 'object' && typeof (o as { id?: string }).id === 'string';
+        })
+        .map((m: { role?: string; organizations: Record<string, unknown> }) =>
+          mapOrganizationRow(m.organizations ?? {}, m.role),
+        );
     },
   });
 }
@@ -138,14 +143,53 @@ export function useUpdateCompany() {
   });
 }
 
+/** Rows shaped for Settings team tab: membership + nested `users` for display. */
+export interface CompanyMemberRow {
+  id: string;
+  org_id: string;
+  user_id: string;
+  role: string;
+  users: { email: string; user_metadata?: { full_name?: string } };
+}
+
+/**
+ * Team list for an org. Uses two queries (memberships then public.users) because
+ * PostgREST embed `users:user_id` is unreliable when user_id FK targets auth.users,
+ * and so we do not swallow errors (empty list + demo fallback hid real failures).
+ */
 export function useCompanyMembers(orgId?: string) {
   return useQuery({
     queryKey: ['company_members', orgId],
-    queryFn: async () => {
+    queryFn: async (): Promise<CompanyMemberRow[]> => {
       if (!isSupabaseConfigured || !orgId) return [];
-      const { data, error } = await supabase.from('company_memberships').select('*, users:user_id(email, user_metadata)').eq('org_id', orgId);
-      if (error) return [];
-      return data ?? [];
+      const { data: rows, error } = await supabase
+        .from('company_memberships')
+        .select('id, org_id, user_id, role, joined_at')
+        .eq('org_id', orgId);
+      if (error) throw error;
+      if (!rows?.length) return [];
+      const ids = [...new Set(rows.map((r) => r.user_id))];
+      const { data: profiles, error: pErr } = await supabase
+        .from('users')
+        .select('id, email, full_name')
+        .in('id', ids);
+      if (pErr) throw pErr;
+      const byId = Object.fromEntries((profiles ?? []).map((p: { id: string; email: string; full_name: string | null }) => [p.id, p]));
+      return rows.map((r: { id: string; org_id: string; user_id: string; role: string }) => {
+        const p = byId[r.user_id];
+        const email = p?.email ?? 'Unknown';
+        const fullName = (p?.full_name && String(p.full_name).trim()) || null;
+        return {
+          id: r.id,
+          org_id: r.org_id,
+          user_id: r.user_id,
+          role: r.role,
+          users: {
+            email,
+            user_metadata: fullName ? { full_name: fullName } : {},
+          },
+        };
+      });
     },
     enabled: !!orgId,
   });

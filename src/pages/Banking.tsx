@@ -109,7 +109,7 @@ const SYNC_STATUS_CONFIG: Record<
 export default function Banking() {
   const { toast } = useToast();
   const orgId = useOrgId();
-  const { data: accounts = [], isLoading: accountsLoading } = useBankAccounts();
+  const { data: accounts = [], isLoading: accountsLoading } = useBankAccounts({ orgId });
   const { data: queue = [], isLoading: queueLoading } = useReconciliationQueue();
   const createAccount = useCreateBankAccount();
   const matchTransaction = useMatchTransaction();

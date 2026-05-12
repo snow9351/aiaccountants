@@ -66,7 +66,7 @@ export default function Transactions() {
   const { data: transactions = [], isLoading, isError, error, refetch } = useTransactions({ orgId });
   const createTransaction = useCreateTransaction();
   const matchTransaction = useMatchTransaction();
-  const { data: bankAccounts = [], isLoading: bankLoading } = useBankAccounts();
+  const { data: bankAccounts = [], isLoading: bankLoading } = useBankAccounts({ orgId });
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   // Local state

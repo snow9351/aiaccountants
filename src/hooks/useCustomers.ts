@@ -2,16 +2,18 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
 import type { Customer } from '@/integrations/supabase/types';
 
-export function useCustomers() {
+/** Pass `{ orgId }` from `useOrgId()` so customers match the active company (invited accountants, multi-org owners). */
+export function useCustomers(filters?: { orgId?: string }) {
+  const orgId = filters?.orgId;
+  const scoped = filters !== undefined;
   return useQuery({
-    queryKey: ['customers'],
+    queryKey: ['customers', scoped ? orgId ?? '' : 'all'],
+    enabled: !scoped || !!orgId,
     queryFn: async (): Promise<Customer[]> => {
       if (!isSupabaseConfigured) return [];
-      const { data, error } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('is_active', true)
-        .order('name');
+      let q = supabase.from('customers').select('*').eq('is_active', true).order('name');
+      if (orgId) q = q.eq('org_id', orgId);
+      const { data, error } = await q;
       if (error) throw error;
       return data as Customer[];
     },

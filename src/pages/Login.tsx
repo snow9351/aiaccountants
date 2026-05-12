@@ -1,35 +1,52 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Zap, Mail, Lock, User, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Zap, Mail, Lock, User, ArrowRight, Eye, EyeOff, Building2, Briefcase } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth, setPendingInviteToken } from '@/contexts/AuthContext';
 import { isSupabaseConfigured } from '@/integrations/supabase/client';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { signIn, signUp, signInWithGoogle, resetPassword, isAuthenticated } = useAuth();
+  const [searchParams] = useSearchParams();
+  const inviteToken = searchParams.get('invite');
+  const { signIn, signUp, signInWithGoogle, resetPassword, isAuthenticated, user, signOut } = useAuth();
   const { toast } = useToast();
 
   const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>('signin');
+  const [signupAs, setSignupAs] = useState<'business' | 'accountant'>('business');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [firmName, setFirmName] = useState('');
+  const [firmEin, setFirmEin] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (isAuthenticated) navigate('/dashboard');
-  }, [isAuthenticated, navigate]);
+    if (inviteToken) setPendingInviteToken(inviteToken);
+  }, [inviteToken]);
+
+  useEffect(() => {
+    const m = searchParams.get('mode');
+    if (m === 'signup') setMode('signup');
+  }, [searchParams]);
+
+  /** While a Supabase session exists, lock email/password until user signs out (no silent skip of credentials). */
+  const sessionLocksCredentials = isAuthenticated && mode !== 'reset';
+
+  const navigateAfterAuth = () => {
+    if (inviteToken) navigate(`/invite/${inviteToken}`, { replace: true });
+    else navigate('/dashboard', { replace: true });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isSupabaseConfigured && mode !== 'reset') {
-      // Demo mode: sign in with mock user
       await signIn(email, password);
-      navigate('/dashboard');
       return;
     }
     setLoading(true);
@@ -40,11 +57,34 @@ export default function Login() {
         setMode('signin');
       } else if (mode === 'signin') {
         await signIn(email, password);
-        navigate('/dashboard');
+        navigateAfterAuth();
       } else {
-        await signUp(email, password, name);
-        toast({ title: 'Account created!', description: 'Your workspace is ready.' });
-        navigate('/dashboard');
+        if (inviteToken) {
+          await signUp(email, password, name, { skipDefaultWorkspace: true });
+          toast({
+            title: 'Account created',
+            description: 'Finish accepting your invitation on the next screen.',
+          });
+        } else if (signupAs === 'accountant') {
+          if (!firmName.trim()) {
+            toast({ title: 'Firm name required', variant: 'destructive' });
+            setLoading(false);
+            return;
+          }
+          await signUp(email, password, name, {
+            onboarding: 'accountant',
+            firmName: firmName.trim(),
+            firmEin: firmEin.trim() || undefined,
+          });
+          toast({
+            title: 'Welcome',
+            description: 'Create a client company from the Accountant Portal when you are ready.',
+          });
+        } else {
+          await signUp(email, password, name);
+          toast({ title: 'Account created!', description: 'Your workspace is ready.' });
+        }
+        navigateAfterAuth();
       }
     } catch (err: unknown) {
       toast({
@@ -58,14 +98,14 @@ export default function Login() {
   };
 
   const handleDemoMode = async () => {
-    await signIn('demo@example.com', 'demo');
-    navigate('/dashboard');
+    await signIn(email, password);
   };
+
+  const showSignupPaths = mode === 'signup' && !inviteToken && isSupabaseConfigured;
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4 bg-mesh">
       <div className="w-full max-w-md">
-        {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 glow-primary mb-4">
             <Zap className="h-8 w-8 text-primary" />
@@ -76,7 +116,6 @@ export default function Login() {
           </p>
         </div>
 
-        {/* Card */}
         <div className="glass-card rounded-3xl p-8">
           <h2 className="text-xl font-semibold mb-1">
             {mode === 'reset' ? 'Reset password' : mode === 'signin' ? 'Welcome back' : 'Create your account'}
@@ -86,17 +125,55 @@ export default function Login() {
               ? 'Enter your email to receive a reset link'
               : mode === 'signin'
               ? 'Sign in to access your financial dashboard'
-              : 'Get started with AI-powered accounting'}
+              : inviteToken
+              ? 'Create your login—we will link the invited company next.'
+              : 'Choose how you will use the product, then continue with email or Google.'}
           </p>
 
-          {/* Google OAuth */}
+          {isAuthenticated && user && (
+            <div className="mb-6 rounded-2xl border border-border/60 bg-muted/30 p-4">
+              <p className="text-sm text-foreground">
+                Active session as <span className="font-medium">{user.email}</span>.
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                To sign in with email and password again on this device, sign out first. We never skip the password step after logout.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  className="rounded-xl"
+                  onClick={() =>
+                    navigate(inviteToken ? `/invite/${inviteToken}` : '/dashboard', { replace: true })
+                  }
+                >
+                  Continue to app
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="rounded-xl"
+                  onClick={async () => {
+                    await signOut();
+                    toast({ title: 'Signed out', description: 'Enter your email and password below.' });
+                  }}
+                >
+                  Sign out
+                </Button>
+              </div>
+            </div>
+          )}
+
           {mode !== 'reset' && isSupabaseConfigured && (
             <>
               <Button
                 variant="outline"
                 className="w-full gap-2"
+                type="button"
+                disabled={sessionLocksCredentials}
                 onClick={async () => {
-                  try { await signInWithGoogle(); } catch (err) {
+                  try {
+                    await signInWithGoogle();
+                  } catch (err) {
                     toast({ title: 'Google sign-in failed', description: (err as Error)?.message, variant: 'destructive' });
                   }
                 }}
@@ -109,6 +186,10 @@ export default function Login() {
                 </svg>
                 Continue with Google
               </Button>
+              <p className="mt-2 text-xs text-muted-foreground text-center">
+                Google always provisions a default company workspace. To register as an accounting firm without that extra
+                company, use email signup and select <span className="font-medium">Accounting firm</span>.
+              </p>
               <div className="relative my-4">
                 <div className="absolute inset-0 flex items-center">
                   <div className="w-full border-t border-border" />
@@ -120,7 +201,68 @@ export default function Login() {
             </>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-4"
+            autoComplete={mode === 'signin' ? 'off' : 'on'}
+          >
+            {showSignupPaths && (
+              <div className="space-y-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
+                <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">I am signing up as</Label>
+                <RadioGroup
+                  value={signupAs}
+                  onValueChange={(v) => setSignupAs(v as 'business' | 'accountant')}
+                  className="grid gap-2"
+                  disabled={sessionLocksCredentials}
+                >
+                  <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/50 bg-background/50 p-3 has-[[data-state=checked]]:border-primary/40">
+                    <RadioGroupItem value="business" id="su-business" className="mt-1" />
+                    <div>
+                      <span className="flex items-center gap-2 text-sm font-medium">
+                        <Building2 className="h-4 w-4 text-primary" /> Business owner
+                      </span>
+                      <p className="mt-1 text-xs text-muted-foreground">Run your own books; invite an accountant later.</p>
+                    </div>
+                  </label>
+                  <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/50 bg-background/50 p-3 has-[[data-state=checked]]:border-primary/40">
+                    <RadioGroupItem value="accountant" id="su-accountant" className="mt-1" />
+                    <div>
+                      <span className="flex items-center gap-2 text-sm font-medium">
+                        <Briefcase className="h-4 w-4 text-primary" /> Accounting firm
+                      </span>
+                      <p className="mt-1 text-xs text-muted-foreground">Manage client companies under your firm.</p>
+                    </div>
+                  </label>
+                </RadioGroup>
+                {signupAs === 'accountant' && (
+                  <div className="grid gap-3 pt-1">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="firm-name">Firm name</Label>
+                      <Input
+                        id="firm-name"
+                        value={firmName}
+                        onChange={(e) => setFirmName(e.target.value)}
+                        placeholder="North Star CPA LLC"
+                        className="bg-background/50"
+                        disabled={sessionLocksCredentials}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="firm-ein">Firm EIN / Tax ID (optional)</Label>
+                      <Input
+                        id="firm-ein"
+                        value={firmEin}
+                        onChange={(e) => setFirmEin(e.target.value)}
+                        placeholder="12-3456789"
+                        className="bg-background/50"
+                        disabled={sessionLocksCredentials}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {mode === 'signup' && (
               <div className="space-y-1.5">
                 <Label htmlFor="name">Full name</Label>
@@ -130,9 +272,10 @@ export default function Login() {
                     id="name"
                     placeholder="Jordan Davis"
                     value={name}
-                    onChange={e => setName(e.target.value)}
+                    onChange={(e) => setName(e.target.value)}
                     className="pl-10 bg-background/50"
                     required
+                    disabled={sessionLocksCredentials}
                   />
                 </div>
               </div>
@@ -142,15 +285,17 @@ export default function Login() {
               <Label htmlFor="email">Email</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@company.com"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  className="pl-10 bg-background/50"
-                  required
-                />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="you@company.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="pl-10 bg-background/50"
+                    required
+                    disabled={sessionLocksCredentials}
+                    autoComplete={mode === 'signin' ? 'username' : 'email'}
+                  />
               </div>
             </div>
 
@@ -175,14 +320,16 @@ export default function Login() {
                     type={showPassword ? 'text' : 'password'}
                     placeholder="••••••••"
                     value={password}
-                    onChange={e => setPassword(e.target.value)}
+                    onChange={(e) => setPassword(e.target.value)}
                     className="pl-10 pr-10 bg-background/50"
                     required
                     minLength={6}
+                    disabled={sessionLocksCredentials}
+                    autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
                   />
                   <button
                     type="button"
-                    onClick={() => setShowPassword(v => !v)}
+                    onClick={() => setShowPassword((v) => !v)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -191,11 +338,7 @@ export default function Login() {
               </div>
             )}
 
-            <Button
-              type="submit"
-              className="w-full gap-2"
-              disabled={loading}
-            >
+            <Button type="submit" className="w-full gap-2" disabled={loading || sessionLocksCredentials}>
               {loading ? (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
               ) : (
@@ -220,6 +363,7 @@ export default function Login() {
               <Button
                 variant="outline"
                 className="w-full gap-2 border-primary/30 hover:bg-primary/10 hover:border-primary/60"
+                type="button"
                 onClick={handleDemoMode}
               >
                 <Zap className="h-4 w-4 text-primary" />

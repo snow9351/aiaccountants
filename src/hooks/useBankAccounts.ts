@@ -2,12 +2,18 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
 import type { BankAccount, BankTransaction } from '@/integrations/supabase/types';
 
-export function useBankAccounts() {
+/** Pass `{ orgId }` from `useOrgId()` so accounts match the company switcher (required for multi-org / invited users). */
+export function useBankAccounts(filters?: { orgId?: string }) {
+  const orgId = filters?.orgId;
+  const scoped = filters !== undefined;
   return useQuery({
-    queryKey: ['bank_accounts'],
+    queryKey: ['bank_accounts', scoped ? orgId ?? '' : 'all'],
+    enabled: !scoped || !!orgId,
     queryFn: async (): Promise<BankAccount[]> => {
       if (!isSupabaseConfigured) return [];
-      const { data, error } = await supabase.from('bank_accounts').select('*').eq('is_active', true).order('account_name');
+      let q = supabase.from('bank_accounts').select('*').eq('is_active', true).order('account_name');
+      if (orgId) q = q.eq('org_id', orgId);
+      const { data, error } = await q;
       if (error) throw error;
       return data as BankAccount[];
     },

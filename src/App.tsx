@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
 import LandingPage from "./pages/LandingPage.tsx";
 import Login from "./pages/Login.tsx";
+import AcceptInvite from "./pages/AcceptInvite.tsx";
 import Index from "./pages/Index.tsx";
 import Transactions from "./pages/Transactions.tsx";
 import Invoices from "./pages/Invoices.tsx";
@@ -82,6 +83,7 @@ const App = () => (
             {/* Public routes */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/invite/:token" element={<AcceptInvite />} />
 
             {/* Protected app routes */}
             <Route path="/dashboard" element={<ProtectedRoute><Index /></ProtectedRoute>} />

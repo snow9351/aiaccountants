@@ -83,7 +83,7 @@ export function AppSidebar({ mobileOpen, onClose }: { mobileOpen?: boolean; onCl
   const handleLogout = async () => {
     await signOut();
     toast({ title: "Logged out", description: "You've been signed out of AI Accountants." });
-    navigate("/");
+    navigate("/login", { replace: true });
   };
 
   const displayName = user?.user_metadata?.full_name ?? user?.email?.split('@')[0] ?? 'User';

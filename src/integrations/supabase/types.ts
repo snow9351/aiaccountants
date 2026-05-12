@@ -33,6 +33,7 @@ export type Database = {
           fiscal_year_end_month: number;
           base_currency: string;
           tax_id: string | null;
+          managed_by_firm_id: string | null;
           address: Json | null;
           created_at: string;
           updated_at: string;
@@ -43,7 +44,7 @@ export type Database = {
       users: {
         Row: {
           id: string;
-          org_id: string;
+          org_id: string | null;
           email: string;
           full_name: string | null;
           role: 'admin' | 'accountant' | 'viewer';
@@ -714,6 +715,7 @@ export type Database = {
         Row: {
           id: string;
           name: string;
+          ein: string | null;
           owner_id: string | null;
           stripe_customer_id: string | null;
           plan: 'starter' | 'pro' | 'accountant' | 'firm';

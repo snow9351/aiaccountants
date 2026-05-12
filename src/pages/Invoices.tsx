@@ -72,7 +72,7 @@ export default function Invoices() {
     filterStatus ? { status: filterStatus } : undefined,
   );
   const summary = useInvoiceSummary();
-  const { data: customers = [] } = useCustomers();
+  const { data: customers = [] } = useCustomers({ orgId });
   const createInvoice = useCreateInvoice();
   const updateStatus = useUpdateInvoiceStatus();
 
