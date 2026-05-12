@@ -50,6 +50,7 @@ import {
   Sparkles,
   AlertTriangle,
   ClipboardCheck,
+  Lock,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -404,7 +405,11 @@ function TeamAccessTab() {
 /* ------------------------------------------------------------------ */
 function BillingTab() {
   const orgId = useOrgId();
-  const { data: subscription } = useSubscription(orgId);
+  const { data: companies = [], isLoading: companiesLoading } = useCompanies();
+  const activeCompany = companies.find((c) => c.id === orgId);
+  const noBillingAccess = activeCompany?.role === "bookkeeper" || activeCompany?.role === "read_only";
+
+  const { data: subscription } = useSubscription(orgId, !companiesLoading && !noBillingAccess);
 
   const planDisplayNames: Record<string, string> = {
     starter: "Starter",
@@ -433,6 +438,34 @@ function BillingTab() {
   const status = subscription?.status ?? "active";
   const trialEnd = subscription?.trial_end ? new Date(subscription.trial_end) : null;
   const daysLeft = trialEnd ? Math.max(0, Math.ceil((trialEnd.getTime() - Date.now()) / 86400000)) : null;
+
+  if (companiesLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="glass-card rounded-2xl p-6">
+          <div className="h-8 w-48 animate-pulse rounded-lg bg-secondary/40" />
+          <div className="mt-6 h-40 animate-pulse rounded-xl bg-secondary/30" />
+        </div>
+      </div>
+    );
+  }
+
+  if (noBillingAccess) {
+    return (
+      <div className="space-y-6">
+        <div className="glass-card rounded-2xl p-10 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-muted/50 text-muted-foreground">
+            <Lock className="h-7 w-7" />
+          </div>
+          <h3 className="mt-6 font-display text-lg font-semibold text-foreground">Billing is restricted</h3>
+          <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+            Your role on this company is <span className="font-medium text-foreground capitalize">{activeCompany?.role?.replace("_", " ")}</span>.
+            Bookkeepers and read-only members cannot view subscription, payment methods, or change plans. Ask an owner or accountant if you need billing help.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

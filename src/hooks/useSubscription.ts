@@ -39,16 +39,16 @@ export function usePlans() {
   });
 }
 
-export function useSubscription(orgId?: string) {
+export function useSubscription(orgId?: string, queryEnabled = true) {
   return useQuery({
-    queryKey: ['subscription', orgId],
+    queryKey: ['subscription', orgId, queryEnabled],
     queryFn: async (): Promise<Subscription | null> => {
       if (!isSupabaseConfigured) return null;
       const { data, error } = await supabase.from('subscriptions').select('*').eq('org_id', orgId!).eq('status', 'active').single();
       if (error) throw error;
       return data as Subscription;
     },
-    enabled: !!orgId,
+    enabled: !!orgId && queryEnabled,
   });
 }
 
