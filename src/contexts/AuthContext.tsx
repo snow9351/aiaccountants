@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
+import { useCompanyStore } from '@/stores/companyStore';
 
 export type SignUpMetadata = {
   /** default: business owner workspace */
@@ -55,7 +56,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        useCompanyStore.getState().setActiveOrgId('');
+      }
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);

@@ -10,6 +10,7 @@ import { useChartOfAccounts } from "@/hooks/useAccounts";
 import { useOrgId } from "@/hooks/useCompanies";
 import { useToast } from "@/hooks/use-toast";
 import type { UncategorizedTransaction } from "@/hooks/useCategorization";
+import { formatAccountLabel } from "@/lib/coaSubTypes";
 
 const fmtCurrency = (v: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(v);
@@ -32,7 +33,7 @@ export default function Categorization() {
   const { toast } = useToast();
   const orgId = useOrgId();
   const { data: transactions = [] } = useUncategorizedTransactions(orgId);
-  const { data: accounts = [] } = useChartOfAccounts();
+  const { data: accounts = [] } = useChartOfAccounts(orgId || undefined);
   const runAI = useRunAICategorization();
   const confirm = useConfirmCategorization();
   const bulkConfirm = useBulkConfirm();
@@ -127,6 +128,7 @@ export default function Categorization() {
         {transactions.map((tx: UncategorizedTransaction) => {
           const suggestedAccount = accounts.find(a => a.id === tx.suggested_account_id);
           const selectedAccountId = overrides[tx.id] ?? tx.suggested_account_id ?? "";
+          const selectedAccount = accounts.find(a => a.id === selectedAccountId);
 
           return (
             <div key={tx.id} className={cn("glass-card rounded-2xl p-4 transition-all", tx.categorization_status === "unreviewed" && "border border-warning/20")}>
@@ -168,10 +170,10 @@ export default function Categorization() {
                         {suggestedAccount && !overrides[tx.id] ? (
                           <span className="flex items-center gap-1">
                             <Brain className="h-3 w-3 text-primary shrink-0" />
-                            {suggestedAccount.account_number} — {suggestedAccount.name}
+                            {formatAccountLabel(suggestedAccount)}
                           </span>
-                        ) : accounts.find(a => a.id === selectedAccountId) ? (
-                          `${accounts.find(a => a.id === selectedAccountId)?.account_number} — ${accounts.find(a => a.id === selectedAccountId)?.name}`
+                        ) : selectedAccount ? (
+                          formatAccountLabel(selectedAccount)
                         ) : "Select account"}
                       </SelectValue>
                     </SelectTrigger>
@@ -181,7 +183,7 @@ export default function Categorization() {
                           <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">{type}</div>
                           {accounts.filter(a => a.type === type).map(a => (
                             <SelectItem key={a.id} value={a.id} className="text-xs">
-                              {a.account_number} — {a.name}
+                              {formatAccountLabel(a)}
                             </SelectItem>
                           ))}
                         </div>

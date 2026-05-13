@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { CommandPalette } from "@/components/CommandPalette";
 import { useAuth } from "@/contexts/AuthContext";
-import { useCompanies, useUpdateCompany, useCompanyMembers, useOrgId } from "@/hooks/useCompanies";
+import { useCompanies, useUpdateCompany, useCompanyMembers, useOrgId, useFiscalPeriods } from "@/hooks/useCompanies";
 import { usePendingInvitations } from "@/hooks/useAccountantPortal";
 import { isSupabaseConfigured } from "@/integrations/supabase/client";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -14,6 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -21,7 +23,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import type { FiscalPeriod } from "@/integrations/supabase/types";
 import {
   Building2,
   Users,
@@ -51,6 +55,8 @@ import {
   AlertTriangle,
   ClipboardCheck,
   Lock,
+  ChevronDown,
+  CalendarRange,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -69,6 +75,7 @@ function CompanyProfileTab() {
   const [accountingMethod, setAccountingMethod] = useState("");
   const [fiscalYearStart, setFiscalYearStart] = useState("1");
   const [timezone, setTimezone] = useState("");
+  const [requireAccountNumbers, setRequireAccountNumbers] = useState(true);
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
@@ -78,6 +85,7 @@ function CompanyProfileTab() {
       setAccountingMethod(company.accounting_method ?? "cash");
       setFiscalYearStart(String(company.fiscal_year_start ?? 1));
       setTimezone(company.timezone ?? "America/New_York");
+      setRequireAccountNumbers(company.require_account_numbers !== false);
       setDirty(false);
     }
   }, [company]);
@@ -92,6 +100,7 @@ function CompanyProfileTab() {
         accounting_method: accountingMethod,
         fiscal_year_start: Number(fiscalYearStart),
         timezone,
+        require_account_numbers: requireAccountNumbers,
       },
       {
         onSuccess: () => {
@@ -217,6 +226,22 @@ function CompanyProfileTab() {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-border/40 bg-secondary/15 px-4 py-3 sm:col-span-2">
+            <div className="min-w-0 space-y-0.5">
+              <Label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <Hash className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                Require account numbers
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                When off, the chart of accounts allows creating GL accounts without a numeric code (numbers stay unique when present).
+              </p>
+            </div>
+            <Switch
+              checked={requireAccountNumbers}
+              onCheckedChange={(v) => { setRequireAccountNumbers(v); markDirty(); }}
+            />
+          </div>
         </div>
 
         {/* Save Button */}
@@ -231,6 +256,133 @@ function CompanyProfileTab() {
           </Button>
         </div>
       </div>
+
+      <FiscalYearPeriodsSection />
+    </div>
+  );
+}
+
+function formatPeriodDate(iso: string) {
+  const safe = iso.includes("T") ? iso : `${iso}T12:00:00`;
+  return new Date(safe).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function periodStatusBadgeClass(status: FiscalPeriod["status"]) {
+  if (status === "open") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+  if (status === "locked") return "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-400";
+  return "border-border/50 bg-muted/50 text-muted-foreground";
+}
+
+/* ------------------------------------------------------------------ */
+/*  Fiscal year periods (read-only; seeded at company creation)       */
+/* ------------------------------------------------------------------ */
+function FiscalYearPeriodsSection() {
+  const orgId = useOrgId();
+  const { data: periods = [], isLoading, isError, error } = useFiscalPeriods(orgId || undefined);
+
+  const years = useMemo(() => {
+    const ys = [...new Set(periods.map((p) => p.fiscal_year))].sort((a, b) => a - b);
+    return ys;
+  }, [periods]);
+
+  const byYear = useMemo(() => {
+    const m = new Map<number, FiscalPeriod[]>();
+    for (const p of periods) {
+      const list = m.get(p.fiscal_year) ?? [];
+      list.push(p);
+      m.set(p.fiscal_year, list);
+    }
+    return m;
+  }, [periods]);
+
+  const latestYear = years.length ? years[years.length - 1]! : null;
+
+  return (
+    <div className="glass-card rounded-2xl p-6">
+      <div className="mb-6 flex items-center gap-3">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
+          <CalendarRange className="h-4 w-4 text-primary" />
+        </div>
+        <div>
+          <h3 className="font-display text-lg font-semibold text-foreground">Fiscal year periods</h3>
+          <p className="text-sm text-muted-foreground">
+            Monthly periods created for this company (read-only). New companies get the current and next fiscal years seeded automatically.
+          </p>
+        </div>
+      </div>
+
+      {!isSupabaseConfigured && (
+        <p className="text-sm text-muted-foreground">Connect Supabase to load fiscal periods.</p>
+      )}
+
+      {isSupabaseConfigured && isLoading && (
+        <p className="text-sm text-muted-foreground">Loading periods…</p>
+      )}
+
+      {isSupabaseConfigured && isError && (
+        <p className="text-sm text-destructive">
+          {error instanceof Error ? error.message : "Could not load fiscal periods."}
+        </p>
+      )}
+
+      {isSupabaseConfigured && !isLoading && !isError && years.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          No fiscal periods found for this company. They are created when the workspace is first set up. If this organization existed before that feature, ask an administrator to run a backfill.
+        </p>
+      )}
+
+      {isSupabaseConfigured && !isLoading && !isError && years.length > 0 && (
+        <div className="space-y-3">
+          {years.map((fy) => {
+            const rows = byYear.get(fy) ?? [];
+            return (
+              <Collapsible key={fy} defaultOpen={fy === latestYear} className="group overflow-hidden rounded-xl border border-border/40">
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-3 bg-secondary/20 px-4 py-3 text-left text-sm font-medium transition-colors hover:bg-secondary/35"
+                  >
+                    <ChevronDown
+                      className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180"
+                      aria-hidden
+                    />
+                    <span className="text-foreground">Fiscal year {fy}</span>
+                    <span className="ml-auto rounded-full bg-background/40 px-2 py-0.5 text-xs font-medium tabular-nums text-muted-foreground">
+                      {rows.length} periods
+                    </span>
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-border/30 hover:bg-transparent">
+                        <TableHead className="text-xs uppercase tracking-wider text-muted-foreground">Period</TableHead>
+                        <TableHead className="text-xs uppercase tracking-wider text-muted-foreground">Start</TableHead>
+                        <TableHead className="text-xs uppercase tracking-wider text-muted-foreground">End</TableHead>
+                        <TableHead className="text-xs uppercase tracking-wider text-muted-foreground">Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {rows.map((row) => (
+                        <TableRow key={row.id} className="border-border/20">
+                          <TableCell className="font-medium tabular-nums">{row.period_number}</TableCell>
+                          <TableCell className="text-muted-foreground">{formatPeriodDate(row.period_start)}</TableCell>
+                          <TableCell className="text-muted-foreground">{formatPeriodDate(row.period_end)}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={cn("capitalize", periodStatusBadgeClass(row.status))}>
+                              {row.status}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CollapsibleContent>
+              </Collapsible>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import type { JournalEntryWithLines } from "@/hooks/useJournalEntries";
 import type { JournalEntryStatus } from "@/integrations/supabase/types";
+import { formatAccountLabel } from "@/lib/coaSubTypes";
 
 const fmtCurrency = (v: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(v);
@@ -40,7 +41,7 @@ export default function JournalEntries() {
   const { user } = useAuth();
   const orgId = useOrgId();
   const { data: entries = [] } = useJournalEntries();
-  const { data: accounts = [] } = useChartOfAccounts();
+  const { data: accounts = [] } = useChartOfAccounts(orgId || undefined);
   const createEntry = useCreateJournalEntry();
   const postEntry = usePostEntry();
   const voidEntry = useVoidJournalEntry();
@@ -278,7 +279,7 @@ export default function JournalEntries() {
                         const account = accounts.find(a => a.id === line.account_id);
                         return (
                           <tr key={line.id} className={cn("border-t border-border/10", line.is_voided && "opacity-40 line-through")}>
-                            <td className="py-2 text-sm text-foreground">{account ? `${account.account_number} — ${account.name}` : line.account_id}</td>
+                            <td className="py-2 text-sm text-foreground">{account ? formatAccountLabel(account) : line.account_id}</td>
                             <td className="py-2 text-sm text-muted-foreground">{line.description ?? "—"}</td>
                             <td className="py-2 text-right text-sm font-medium text-foreground">{line.debit > 0 ? fmtCurrency(line.debit) : "—"}</td>
                             <td className="py-2 text-right text-sm font-medium text-muted-foreground">{line.credit > 0 ? fmtCurrency(line.credit) : "—"}</td>
@@ -366,7 +367,7 @@ export default function JournalEntries() {
                               <SelectContent>
                                 {accounts.map(a => (
                                   <SelectItem key={a.id} value={a.id} className="text-xs">
-                                    {a.account_number} — {a.name}
+                                    {formatAccountLabel(a)}
                                   </SelectItem>
                                 ))}
                               </SelectContent>

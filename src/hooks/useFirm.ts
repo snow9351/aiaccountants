@@ -44,6 +44,9 @@ export function useCreateClientCompany() {
       entity_type: string;
       accounting_method: string;
       tax_id?: string;
+      industry?: string;
+      fiscal_year_start?: number;
+      timezone?: string;
     }) => {
       if (!isSupabaseConfigured) throw new Error('Supabase is not configured.');
       const { data, error } = await supabase.rpc('create_client_company_for_firm', {
@@ -51,6 +54,9 @@ export function useCreateClientCompany() {
         p_entity_type: input.entity_type,
         p_accounting_method: input.accounting_method,
         p_tax_id: input.tax_id?.trim() || null,
+        p_industry: input.industry?.trim() || 'general',
+        p_fiscal_year_start_month: input.fiscal_year_start ?? 1,
+        p_timezone: input.timezone?.trim() || 'America/New_York',
       });
       if (error) throw error;
       return data as string;

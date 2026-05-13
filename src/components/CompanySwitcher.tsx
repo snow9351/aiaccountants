@@ -40,7 +40,15 @@ export function CompanySwitcher({ collapsed }: { collapsed: boolean }) {
 
   const [open, setOpen] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [form, setForm] = useState({ name: "", entity_type: "llc", accounting_method: "cash", ein: "" });
+  const [form, setForm] = useState({
+    name: "",
+    entity_type: "llc",
+    accounting_method: "cash",
+    industry: "general",
+    fiscal_year_start: 1,
+    timezone: "America/New_York",
+    ein: "",
+  });
 
   const active = companies.find(c => c.id === activeOrgId) ?? companies[0];
 
@@ -69,7 +77,15 @@ export function CompanySwitcher({ collapsed }: { collapsed: boolean }) {
       setActiveOrgId(company.id);
       toast({ title: "Company created", description: `${form.name} — COA auto-generated` });
       setShowCreateDialog(false);
-      setForm({ name: "", entity_type: "llc", accounting_method: "cash", ein: "" });
+      setForm({
+        name: "",
+        entity_type: "llc",
+        accounting_method: "cash",
+        industry: "general",
+        fiscal_year_start: 1,
+        timezone: "America/New_York",
+        ein: "",
+      });
     } catch (err) {
       toast({ title: "Failed", description: (err as Error).message, variant: "destructive" });
     }
@@ -238,6 +254,27 @@ export function CompanySwitcher({ collapsed }: { collapsed: boolean }) {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
+                <Label>Industry</Label>
+                <Select value={form.industry} onValueChange={v => setForm(f => ({ ...f, industry: v }))}>
+                  <SelectTrigger className="bg-background/50"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="general">General</SelectItem>
+                    <SelectItem value="saas">SaaS</SelectItem>
+                    <SelectItem value="ecommerce">E-commerce</SelectItem>
+                    <SelectItem value="professional_services">Professional Services</SelectItem>
+                    <SelectItem value="non_profit">Non-profit</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Currency</Label>
+                <div className="h-10 rounded-md border border-input bg-background/50 px-3 text-sm flex items-center text-muted-foreground">
+                  USD (MVP)
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
                 <Label>Entity Type</Label>
                 <Select value={form.entity_type} onValueChange={v => setForm(f => ({ ...f, entity_type: v }))}>
                   <SelectTrigger className="bg-background/50"><SelectValue /></SelectTrigger>
@@ -261,11 +298,48 @@ export function CompanySwitcher({ collapsed }: { collapsed: boolean }) {
                 </Select>
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Fiscal year start</Label>
+                <Select value={String(form.fiscal_year_start)} onValueChange={v => setForm(f => ({ ...f, fiscal_year_start: Number(v) }))}>
+                  <SelectTrigger className="bg-background/50"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">January</SelectItem>
+                    <SelectItem value="2">February</SelectItem>
+                    <SelectItem value="3">March</SelectItem>
+                    <SelectItem value="4">April</SelectItem>
+                    <SelectItem value="5">May</SelectItem>
+                    <SelectItem value="6">June</SelectItem>
+                    <SelectItem value="7">July</SelectItem>
+                    <SelectItem value="8">August</SelectItem>
+                    <SelectItem value="9">September</SelectItem>
+                    <SelectItem value="10">October</SelectItem>
+                    <SelectItem value="11">November</SelectItem>
+                    <SelectItem value="12">December</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Time zone</Label>
+                <Select value={form.timezone} onValueChange={v => setForm(f => ({ ...f, timezone: v }))}>
+                  <SelectTrigger className="bg-background/50"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="America/New_York">US/Eastern</SelectItem>
+                    <SelectItem value="America/Chicago">US/Central</SelectItem>
+                    <SelectItem value="America/Denver">US/Mountain</SelectItem>
+                    <SelectItem value="America/Los_Angeles">US/Pacific</SelectItem>
+                    <SelectItem value="UTC">UTC</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             <div className="space-y-1.5">
               <Label>EIN (optional)</Label>
               <Input placeholder="XX-XXXXXXX" value={form.ein} onChange={e => setForm(f => ({ ...f, ein: e.target.value }))} className="bg-background/50" />
             </div>
-            <p className="text-xs text-muted-foreground">A default chart of accounts will be auto-generated based on your entity type.</p>
+            <p className="text-xs text-muted-foreground">
+              We auto-generate a default chart of accounts, opening balance equity, and fiscal periods.
+            </p>
             <div className="flex gap-3 pt-2">
               <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
               <Button className="flex-1 rounded-xl" onClick={handleCreate} disabled={createCompany.isPending}>

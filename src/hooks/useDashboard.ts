@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
-import { useCompanyStore } from '@/hooks/useCompanies';
+import { useOrgId } from '@/hooks/useCompanies';
 
 export interface DashboardKPIs {
   revenue: number;
@@ -86,7 +86,7 @@ function pctChange(prev: number, curr: number): number {
 }
 
 export function useDashboardKPIs() {
-  const orgId = useCompanyStore((s) => s.activeOrgId);
+  const orgId = useOrgId();
 
   return useQuery({
     queryKey: ['dashboard_kpis', orgId],
@@ -138,7 +138,7 @@ export function useDashboardKPIs() {
 }
 
 export function useARAgingData() {
-  const orgId = useCompanyStore((s) => s.activeOrgId);
+  const orgId = useOrgId();
 
   return useQuery({
     queryKey: ['ar_aging', orgId],
@@ -172,7 +172,7 @@ export function useARAgingData() {
 }
 
 export function useCashFlowChartData() {
-  const orgId = useCompanyStore((s) => s.activeOrgId);
+  const orgId = useOrgId();
 
   return useQuery({
     queryKey: ['cashflow_chart', orgId],

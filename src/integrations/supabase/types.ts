@@ -35,6 +35,7 @@ export type Database = {
           tax_id: string | null;
           managed_by_firm_id: string | null;
           address: Json | null;
+          require_account_numbers: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -72,10 +73,10 @@ export type Database = {
         Row: {
           id: string;
           org_id: string;
-          account_number: string;
+          account_number: string | null;
           name: string;
           type: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
-          sub_type: string | null;
+          sub_type: string;
           parent_id: string | null;
           description: string | null;
           is_active: boolean;
@@ -690,6 +691,20 @@ export type Database = {
         Insert: Omit<Database['public']['Tables']['exchange_rates']['Row'], 'id' | 'created_at'>;
         Update: Partial<Database['public']['Tables']['exchange_rates']['Insert']>;
       };
+      periods: {
+        Row: {
+          id: string;
+          org_id: string;
+          fiscal_year: number;
+          period_number: number;
+          period_start: string;
+          period_end: string;
+          status: 'open' | 'closed' | 'locked';
+          created_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['periods']['Row'], 'id' | 'created_at'>;
+        Update: Partial<Database['public']['Tables']['periods']['Insert']>;
+      };
 
       // ── MVP v2 tables ─────────────────────────────────────
 
@@ -1039,6 +1054,10 @@ export type Database = {
         Args: { p_org_id: string; p_entity_type: string };
         Returns: void;
       };
+      merge_accounts: {
+        Args: { p_org_id: string; p_from_account_id: string; p_to_account_id: string };
+        Returns: void;
+      };
       my_companies: {
         Args: Record<PropertyKey, never>;
         Returns: Array<{
@@ -1054,6 +1073,7 @@ export type Database = {
           tax_id: string | null;
           timezone: string;
           trial_ends_at: string | null;
+          require_account_numbers: boolean;
         }>;
       };
     };
@@ -1097,6 +1117,7 @@ export type Vendor = Database['public']['Tables']['vendors']['Row'];
 export type Bill = Database['public']['Tables']['bills']['Row'];
 export type BillLineItem = Database['public']['Tables']['bill_line_items']['Row'];
 export type Expense = Database['public']['Tables']['expenses']['Row'];
+export type FiscalPeriod = Database['public']['Tables']['periods']['Row'];
 export type Receipt = Database['public']['Tables']['receipts']['Row'];
 export type BankAccount = Database['public']['Tables']['bank_accounts']['Row'];
 export type BankTransaction = Database['public']['Tables']['bank_transactions']['Row'];

@@ -1,41 +1,32 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
+import type { FiscalPeriod } from '@/integrations/supabase/types';
 import { useAuth } from '@/contexts/AuthContext';
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { useCompanyStore } from '@/stores/companyStore';
 import { useEffect } from 'react';
 
-interface CompanyStore {
-  activeOrgId: string;
-  setActiveOrgId: (id: string) => void;
-}
+export { useCompanyStore } from '@/stores/companyStore';
 
-export const useCompanyStore = create<CompanyStore>()(
-  persist(
-    (set) => ({
-      activeOrgId: '',
-      setActiveOrgId: (id) => set({ activeOrgId: id }),
-    }),
-    { name: 'ai-accountants-org' }
-  )
-);
-
-/** Returns the active org ID, auto-syncing from the user's companies on first load */
+/** Active org for data queries. Resolves from `my_companies` so we never query with a stale persisted id before the list loads. */
 export function useOrgId(): string {
   const { activeOrgId, setActiveOrgId } = useCompanyStore();
-  const { data: companies } = useCompanies();
+  const { data: companies, isFetched } = useCompanies();
+  const list = companies ?? [];
+
+  const resolved = (() => {
+    if (!isFetched) return "";
+    if (list.length === 0) return "";
+    if (activeOrgId && list.some((c) => c.id === activeOrgId)) return activeOrgId;
+    return list[0]!.id;
+  })();
 
   useEffect(() => {
-    if (!activeOrgId && companies && companies.length > 0) {
-      setActiveOrgId(companies[0].id);
-    }
-    // If stored orgId is no longer valid, reset to first company
-    if (activeOrgId && companies && companies.length > 0 && !companies.find(c => c.id === activeOrgId)) {
-      setActiveOrgId(companies[0].id);
-    }
-  }, [activeOrgId, companies, setActiveOrgId]);
+    if (!isFetched || list.length === 0) return;
+    const activeOk = Boolean(activeOrgId) && list.some((c) => c.id === activeOrgId);
+    if (!activeOk) setActiveOrgId(list[0]!.id);
+  }, [isFetched, list, activeOrgId, setActiveOrgId]);
 
-  return activeOrgId;
+  return resolved;
 }
 
 export interface Company {
@@ -51,6 +42,8 @@ export interface Company {
   trial_ends_at: string | null;
   logo_url: string | null;
   role?: string;
+  /** When false, GL accounts may omit account numbers (company preference). */
+  require_account_numbers?: boolean;
 }
 
 /** DB uses `tax_id`; UI uses `ein`. */
@@ -72,6 +65,8 @@ export function mapOrganizationRow(org: Record<string, unknown>, role?: string):
     subscription_status: String(org.subscription_status ?? 'trialing'),
     trial_ends_at: typeof org.trial_ends_at === 'string' ? org.trial_ends_at : null,
     logo_url: typeof org.logo_url === 'string' ? org.logo_url : null,
+    require_account_numbers:
+      typeof org.require_account_numbers === 'boolean' ? org.require_account_numbers : true,
     role,
   };
 }
@@ -80,6 +75,7 @@ export function useCompanies() {
   const { user } = useAuth();
   return useQuery({
     queryKey: ['companies', user?.id],
+    enabled: Boolean(user?.id) && isSupabaseConfigured,
     queryFn: async (): Promise<Company[]> => {
       if (!isSupabaseConfigured || !user) return [];
       // Prefer single RPC to avoid PostgREST embed + RLS edge cases.
@@ -99,6 +95,7 @@ export function useCompanies() {
             subscription_status: row.subscription_status,
             trial_ends_at: row.trial_ends_at,
             logo_url: row.logo_url,
+            require_account_numbers: row.require_account_numbers,
           },
           row.role
         )
@@ -111,34 +108,41 @@ export function useCreateCompany() {
   const qc = useQueryClient();
   const { user } = useAuth();
   return useMutation({
-    mutationFn: async (input: { name: string; entity_type: string; accounting_method: string; ein?: string }) => {
+    mutationFn: async (input: {
+      name: string;
+      entity_type: string;
+      accounting_method: string;
+      industry?: string;
+      fiscal_year_start?: number;
+      timezone?: string;
+      ein?: string;
+    }) => {
       if (!isSupabaseConfigured) return { ...input, id: crypto.randomUUID() } as Company;
       if (!user) throw new Error('You must be signed in to create a company.');
-      const ein = input.ein?.trim();
-      const payload: Record<string, unknown> = {
-        name: input.name.trim(),
-        entity_type: input.entity_type,
-        accounting_method: input.accounting_method,
-        created_by: user.id,
-      };
-      if (ein) payload.tax_id = ein;
-
-      const { data: org, error: orgErr } = await supabase.from('organizations').insert(payload as never).select().single();
-      if (orgErr) throw orgErr;
-      // Create membership as owner
-      const { error: membershipErr } = await supabase
-        .from('company_memberships')
-        .insert({ org_id: org.id, user_id: user.id, role: 'owner', is_billing_owner: true });
-      if (membershipErr) throw membershipErr;
-      // Auto-generate COA
-      const { error: coaErr } = await supabase.rpc('generate_default_coa', {
-        p_org_id: org.id,
+      const { data: orgId, error } = await supabase.rpc('create_company', {
+        p_legal_name: input.name.trim(),
+        p_tax_id: input.ein?.trim() || null,
         p_entity_type: input.entity_type,
+        p_accounting_method: input.accounting_method,
+        p_industry: input.industry?.trim() || 'general',
+        p_fiscal_year_start_month: input.fiscal_year_start ?? 1,
+        p_timezone: input.timezone?.trim() || 'America/New_York',
       });
-      if (coaErr) throw coaErr;
+      if (error) throw error;
+
+      // Refresh companies list and let UI select active org from refreshed data.
+      await qc.invalidateQueries({ queryKey: ['companies'] });
+      await qc.invalidateQueries({ queryKey: ['fiscal_periods'] });
+
+      // Best-effort: if the org is visible via RLS, map it; otherwise return minimal.
+      const { data: org, error: orgErr } = await supabase.from('organizations').select('*').eq('id', orgId).maybeSingle();
+      if (orgErr || !org) return { id: String(orgId), name: input.name.trim() } as Company;
       return mapOrganizationRow(org as Record<string, unknown>);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['companies'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['companies'] });
+      qc.invalidateQueries({ queryKey: ['fiscal_periods'] });
+    },
   });
 }
 
@@ -153,7 +157,10 @@ export function useUpdateCompany() {
       if (error) throw error;
       return mapOrganizationRow(data as Record<string, unknown>);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['companies'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['companies'] });
+      qc.invalidateQueries({ queryKey: ['accounts'] });
+    },
   });
 }
 
@@ -204,6 +211,24 @@ export function useCompanyMembers(orgId?: string) {
           },
         };
       });
+    },
+    enabled: !!orgId,
+  });
+}
+
+export function useFiscalPeriods(orgId?: string) {
+  return useQuery({
+    queryKey: ['fiscal_periods', orgId],
+    queryFn: async (): Promise<FiscalPeriod[]> => {
+      if (!isSupabaseConfigured || !orgId) return [];
+      const { data, error } = await supabase
+        .from('periods')
+        .select('id, org_id, fiscal_year, period_number, period_start, period_end, status, created_at')
+        .eq('org_id', orgId)
+        .order('fiscal_year', { ascending: true })
+        .order('period_number', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as FiscalPeriod[];
     },
     enabled: !!orgId,
   });
