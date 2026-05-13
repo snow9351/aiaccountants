@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { mergePlansWithStripePriceEnv, PRICING_PLAN_NAMES } from '@/lib/stripePlanPriceIds';
 
 export interface Plan {
   id: string;
@@ -11,6 +11,9 @@ export interface Plan {
   max_companies: number;
   max_users: number;
   features: Record<string, boolean>;
+  /** Set in DB for Stripe Checkout; checkout is disabled for that plan until present. */
+  stripe_price_id_monthly?: string | null;
+  stripe_price_id_annually?: string | null;
 }
 
 export interface Subscription {
@@ -27,15 +30,27 @@ export interface Subscription {
 }
 
 export function usePlans() {
+  const priceIdEnv = import.meta.env.VITE_STRIPE_PLAN_PRICE_IDS ?? '';
   return useQuery({
-    queryKey: ['plans'],
+    // Include env so React Query refetches after .env changes (staleTime is Infinity).
+    queryKey: ['plans', priceIdEnv],
     queryFn: async (): Promise<Plan[]> => {
       if (!isSupabaseConfigured) return [];
-      const { data, error } = await supabase.from('plans').select('*').eq('is_active', true).order('price_monthly');
+      const { data, error } = await supabase
+        .from('plans')
+        .select(
+          'id, name, display_name, price_monthly, price_annually, max_companies, max_users, features, stripe_price_id_monthly, stripe_price_id_annually, is_active',
+        )
+        .eq('is_active', true)
+        .in('name', [...PRICING_PLAN_NAMES])
+        .order('price_monthly');
       if (error) throw error;
-      return data as Plan[];
+      const rows = data as Plan[];
+      return mergePlansWithStripePriceEnv(rows, priceIdEnv || undefined);
     },
-    staleTime: Infinity,
+    // Plans change rarely in DB, but Infinity hid Supabase edits until a full tab reload.
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
   });
 }
 
