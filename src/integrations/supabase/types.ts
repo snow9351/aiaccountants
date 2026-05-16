@@ -69,6 +69,34 @@ export type Database = {
         Insert: Omit<Database['public']['Tables']['payment_terms']['Row'], 'id' | 'created_at'>;
         Update: Partial<Database['public']['Tables']['payment_terms']['Insert']>;
       };
+      contacts: {
+        Row: {
+          id: string;
+          org_id: string;
+          display_name: string;
+          legal_name: string | null;
+          contact_type: 'customer' | 'vendor' | 'both';
+          billing_address: Json | null;
+          shipping_address: Json | null;
+          tax_id: string | null;
+          is_1099_eligible: boolean;
+          payment_terms_id: string | null;
+          default_income_account_id: string | null;
+          default_expense_account_id: string | null;
+          email: string | null;
+          phone: string | null;
+          notes: string | null;
+          ytd_1099_payments: number;
+          ytd_1099_year: number;
+          customer_id: string | null;
+          vendor_id: string | null;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['contacts']['Row'], 'id' | 'ytd_1099_payments' | 'ytd_1099_year' | 'created_at' | 'updated_at'>;
+        Update: Partial<Database['public']['Tables']['contacts']['Insert']>;
+      };
       accounts: {
         Row: {
           id: string;
@@ -138,10 +166,15 @@ export type Database = {
           id: string;
           org_id: string;
           name: string;
+          display_name: string | null;
+          legal_name: string | null;
           email: string | null;
           phone: string | null;
           billing_address: Json | null;
+          shipping_address: Json | null;
+          tax_id: string | null;
           payment_terms_id: string | null;
+          default_income_account_id: string | null;
           credit_limit: number | null;
           payment_score: number;
           total_revenue: number;
@@ -161,7 +194,7 @@ export type Database = {
           org_id: string;
           invoice_number: string;
           customer_id: string;
-          status: 'draft' | 'sent' | 'viewed' | 'partial' | 'paid' | 'overdue' | 'cancelled';
+          status: 'draft' | 'sent' | 'viewed' | 'partial' | 'paid' | 'overdue' | 'cancelled' | 'voided';
           issue_date: string;
           due_date: string;
           subtotal: number;
@@ -170,11 +203,20 @@ export type Database = {
           amount_paid: number;
           balance_due: number;
           notes: string | null;
+          discount_type: 'none' | 'percent' | 'flat';
+          discount_value: number;
+          currency: string;
           is_recurring: boolean;
           recurring_interval: string | null;
           journal_entry_id: string | null;
           sent_at: string | null;
           viewed_at: string | null;
+          stripe_payment_intent_id: string | null;
+          stripe_payment_link_id: string | null;
+          payment_link_url: string | null;
+          pdf_url: string | null;
+          last_reminder_at: string | null;
+          reminder_count: number;
           created_at: string;
           updated_at: string;
         };
@@ -206,6 +248,7 @@ export type Database = {
           payment_method: string;
           reference: string | null;
           notes: string | null;
+          stripe_payment_intent_id: string | null;
           created_at: string;
         };
         Insert: Omit<Database['public']['Tables']['invoice_payments']['Row'], 'id' | 'created_at'>;
@@ -216,16 +259,22 @@ export type Database = {
           id: string;
           org_id: string;
           name: string;
+          display_name: string | null;
+          legal_name: string | null;
           email: string | null;
           phone: string | null;
           address: Json | null;
+          billing_address: Json | null;
           tax_id: string | null;
           payment_terms_id: string | null;
+          default_expense_account_id: string | null;
           preferred_payment_method: string | null;
           total_spend: number;
           ap_balance: number;
           reliability_score: number;
           is_1099: boolean;
+          ytd_1099_payments: number;
+          ytd_1099_year: number;
           is_active: boolean;
           notes: string | null;
           created_at: string;
@@ -273,6 +322,20 @@ export type Database = {
         };
         Insert: Omit<Database['public']['Tables']['bill_line_items']['Row'], 'id' | 'created_at'>;
         Update: Partial<Database['public']['Tables']['bill_line_items']['Insert']>;
+      };
+      bill_payments: {
+        Row: {
+          id: string;
+          bill_id: string;
+          payment_date: string;
+          amount: number;
+          payment_method: string;
+          reference: string | null;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['bill_payments']['Row'], 'id' | 'created_at'>;
+        Update: Partial<Database['public']['Tables']['bill_payments']['Insert']>;
       };
       expenses: {
         Row: {
@@ -1058,6 +1121,80 @@ export type Database = {
         Args: { p_org_id: string; p_from_account_id: string; p_to_account_id: string };
         Returns: void;
       };
+      create_contact: {
+        Args: {
+          p_org_id: string;
+          p_contact_type: 'customer' | 'vendor' | 'both';
+          p_display_name: string;
+          p_legal_name?: string | null;
+          p_billing_address?: Json | null;
+          p_shipping_address?: Json | null;
+          p_tax_id?: string | null;
+          p_is_1099_eligible?: boolean;
+          p_payment_terms_id?: string | null;
+          p_default_income_account_id?: string | null;
+          p_default_expense_account_id?: string | null;
+          p_email?: string | null;
+          p_phone?: string | null;
+          p_notes?: string | null;
+        };
+        Returns: string;
+      };
+      record_bill_payment: {
+        Args: {
+          p_bill_id: string;
+          p_payment_date?: string | null;
+          p_amount?: number | null;
+          p_payment_method?: string | null;
+          p_reference?: string | null;
+        };
+        Returns: string | null;
+      };
+      create_invoice_with_lines: {
+        Args: {
+          p_org_id: string;
+          p_customer_id: string;
+          p_invoice_number: string;
+          p_issue_date?: string;
+          p_due_date?: string | null;
+          p_notes?: string | null;
+          p_discount_type?: string;
+          p_discount_value?: number;
+          p_lines?: Json;
+        };
+        Returns: string;
+      };
+      transition_invoice_status: {
+        Args: { p_invoice_id: string; p_new_status: Database['public']['Enums']['invoice_status'] };
+        Returns: Database['public']['Tables']['invoices']['Row'];
+      };
+      record_invoice_payment: {
+        Args: {
+          p_invoice_id: string;
+          p_payment_date?: string | null;
+          p_amount?: number | null;
+          p_payment_method?: string | null;
+          p_reference?: string | null;
+          p_notes?: string | null;
+          p_stripe_payment_intent_id?: string | null;
+        };
+        Returns: string;
+      };
+      vendors_1099_threshold: {
+        Args: { p_org_id: string; p_year?: number | null };
+        Returns: Array<{
+          contact_id: string | null;
+          vendor_id: string;
+          display_name: string;
+          tax_id: string | null;
+          ytd_1099_payments: number;
+          threshold: number;
+        }>;
+      };
+      seed_default_payment_terms: {
+        Args: { p_org_id: string };
+        Returns: void;
+      };
       my_companies: {
         Args: Record<PropertyKey, never>;
         Returns: Array<{
@@ -1079,7 +1216,7 @@ export type Database = {
     };
     Enums: {
       account_type: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
-      invoice_status: 'draft' | 'sent' | 'viewed' | 'partial' | 'paid' | 'overdue' | 'cancelled';
+      invoice_status: 'draft' | 'sent' | 'viewed' | 'partial' | 'paid' | 'overdue' | 'cancelled' | 'voided';
       bill_status: 'draft' | 'received' | 'approved' | 'paid' | 'overdue' | 'cancelled';
       expense_status: 'pending' | 'auto_categorized' | 'review' | 'approved' | 'rejected';
       transaction_type: 'income' | 'expense' | 'transfer';
@@ -1109,6 +1246,8 @@ export type OrgUser = Database['public']['Tables']['users']['Row'];
 export type Account = Database['public']['Tables']['accounts']['Row'];
 export type JournalEntry = Database['public']['Tables']['journal_entries']['Row'];
 export type JournalEntryLine = Database['public']['Tables']['journal_entry_lines']['Row'];
+export type Contact = Database['public']['Tables']['contacts']['Row'];
+export type ContactType = Contact['contact_type'];
 export type Customer = Database['public']['Tables']['customers']['Row'];
 export type Invoice = Database['public']['Tables']['invoices']['Row'];
 export type InvoiceLineItem = Database['public']['Tables']['invoice_line_items']['Row'];
@@ -1116,6 +1255,7 @@ export type InvoicePayment = Database['public']['Tables']['invoice_payments']['R
 export type Vendor = Database['public']['Tables']['vendors']['Row'];
 export type Bill = Database['public']['Tables']['bills']['Row'];
 export type BillLineItem = Database['public']['Tables']['bill_line_items']['Row'];
+export type BillPayment = Database['public']['Tables']['bill_payments']['Row'];
 export type Expense = Database['public']['Tables']['expenses']['Row'];
 export type FiscalPeriod = Database['public']['Tables']['periods']['Row'];
 export type Receipt = Database['public']['Tables']['receipts']['Row'];

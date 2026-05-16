@@ -120,6 +120,7 @@ export default function ChartOfAccounts() {
     description: "",
     is_reconcilable: false,
     fs_section: "" as FsSectionType | "",
+    tax_category: "",
     sort_order: "",
   });
 
@@ -132,6 +133,7 @@ export default function ChartOfAccounts() {
     description: "",
     is_reconcilable: false,
     fs_section: "" as FsSectionType | "",
+    tax_category: "",
   });
 
   const [mergeOpen, setMergeOpen] = useState(false);
@@ -162,6 +164,7 @@ export default function ChartOfAccounts() {
       description: acc.description ?? "",
       is_reconcilable: acc.is_reconcilable,
       fs_section: (acc.fs_section as FsSectionType) || "",
+      tax_category: acc.tax_category ?? "",
     });
     setEditOpen(true);
   };
@@ -193,6 +196,7 @@ export default function ChartOfAccounts() {
         description: editForm.description.trim() || null,
         is_reconcilable: editForm.is_reconcilable,
         fs_section: (editForm.fs_section as FsSectionType) || null,
+        tax_category: editForm.tax_category.trim() || null,
       });
       toast({ title: "Account updated" });
       setEditOpen(false);
@@ -268,21 +272,28 @@ export default function ChartOfAccounts() {
       return;
     }
     try {
+      const createdType = form.type;
+      const createdLabel = form.name.trim();
       await createAccount.mutateAsync({
         account_number: num ? num : null,
-        name: form.name.trim(),
-        type: form.type,
+        name: createdLabel,
+        type: createdType,
         sub_type: form.sub_type,
         description: form.description || undefined,
         org_id: orgId,
         is_active: true,
         is_system: false,
-        normal_balance: form.type === "asset" || form.type === "expense" ? "debit" : "credit",
+        normal_balance: createdType === "asset" || createdType === "expense" ? "debit" : "credit",
         is_reconcilable: form.is_reconcilable,
         fs_section: (form.fs_section as FsSectionType) || null,
+        tax_category: form.tax_category.trim() || null,
         sort_order: form.sort_order ? parseInt(form.sort_order, 10) : null,
       });
-      toast({ title: "Account created", description: `${num || "(no number)"} — ${form.name.trim()}` });
+      setOpenSections((s) => ({ ...s, [createdType]: true }));
+      toast({
+        title: "Account created",
+        description: `It’s in the “${typeConfig[createdType].label}” section below (opened for you). Count in the header updates to include this account.`,
+      });
       setShowDialog(false);
       setForm({
         account_number: "",
@@ -292,6 +303,7 @@ export default function ChartOfAccounts() {
         description: "",
         is_reconcilable: false,
         fs_section: "",
+        tax_category: "",
         sort_order: "",
       });
     } catch (err) {
@@ -357,10 +369,6 @@ export default function ChartOfAccounts() {
           </div>
           <div>
             <h1 className="font-display text-2xl font-bold text-foreground">Chart of Accounts</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              {accounts.length} accounts · default COA follows entity type ·{" "}
-              {requireNumbers ? "Account numbers required" : "Account numbers optional"}
-            </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -568,19 +576,23 @@ export default function ChartOfAccounts() {
               description: "",
               is_reconcilable: false,
               fs_section: "",
+              tax_category: "",
               sort_order: "",
             });
           }
         }}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto rounded-2xl border-border/50 bg-card sm:max-w-md">
+        <DialogContent className="max-h-[90vh] overflow-y-auto rounded-2xl border-border/50 bg-card sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="font-display text-lg">New Account</DialogTitle>
+            <DialogTitle className="font-display text-lg">New account</DialogTitle>
+            <DialogDescription>
+              Same columns as the chart grid: number, name, sub-type, FS section, tax category, reconcilable. Balance is not set here (it comes from the ledger).
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="acct-number">Account Number{requireNumbers ? "" : " (optional)"}</Label>
+                <Label htmlFor="acct-number">Number{requireNumbers ? "" : " (optional)"}</Label>
                 <Input
                   id="acct-number"
                   placeholder={requireNumbers ? suggestNextAccountNumber(accounts) : "Leave blank if preferred"}
@@ -671,6 +683,16 @@ export default function ChartOfAccounts() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="acct-tax-category">Tax Category (optional)</Label>
+              <Input
+                id="acct-tax-category"
+                placeholder="e.g. Schedule C line, 1099 box"
+                value={form.tax_category}
+                onChange={(e) => setForm((f) => ({ ...f, tax_category: e.target.value }))}
+                className="bg-background/50"
+              />
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="acct-sort">Sort Order (optional)</Label>
@@ -715,36 +737,46 @@ export default function ChartOfAccounts() {
       </Dialog>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto rounded-2xl border-border/50 bg-card sm:max-w-md">
+        <DialogContent className="max-h-[90vh] overflow-y-auto rounded-2xl border-border/50 bg-card sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="font-display text-lg">Edit account</DialogTitle>
-            <DialogDescription>Update name, sub-type, and reporting fields. Type is fixed after creation.</DialogDescription>
+            <DialogDescription>
+              Edit the same fields as the table: number, name, sub-type, FS section, tax category, reconcilable. Account type is fixed after creation. Balance is read-only (computed from journal entries, not stored on the account).
+            </DialogDescription>
           </DialogHeader>
           {editAcc && (
             <div className="space-y-4 pt-2">
+              <div className="rounded-xl border border-border/40 bg-secondary/20 px-3 py-2 text-sm">
+                <span className="text-muted-foreground">Type (fixed) </span>
+                <span className="font-medium text-foreground">{typeConfig[editAcc.type]?.label ?? editAcc.type}</span>
+              </div>
+
               <div className="space-y-1.5">
-                <Label>Account number{requireNumbers ? "" : " (optional)"}</Label>
+                <Label htmlFor="edit-number">Number</Label>
                 <Input
+                  id="edit-number"
                   value={editForm.account_number}
                   onChange={(e) => setEditForm((f) => ({ ...f, account_number: e.target.value }))}
                   className="bg-background/50"
+                  placeholder={requireNumbers ? undefined : "Optional"}
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Name</Label>
+                <Label htmlFor="edit-name">Account name</Label>
                 <Input
+                  id="edit-name"
                   value={editForm.name}
                   onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
                   className="bg-background/50"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Sub-type</Label>
+                <Label htmlFor="edit-sub">Sub-type</Label>
                 <Select
                   value={editForm.sub_type}
                   onValueChange={(v) => setEditForm((f) => ({ ...f, sub_type: v as CoaSubType }))}
                 >
-                  <SelectTrigger className="bg-background/50">
+                  <SelectTrigger id="edit-sub" className="bg-background/50">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -757,20 +789,12 @@ export default function ChartOfAccounts() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Description</Label>
-                <Input
-                  value={editForm.description}
-                  onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
-                  className="bg-background/50"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>FS Section</Label>
+                <Label htmlFor="edit-fs">FS Section</Label>
                 <Select
                   value={editForm.fs_section}
                   onValueChange={(v) => setEditForm((f) => ({ ...f, fs_section: v as FsSectionType | "" }))}
                 >
-                  <SelectTrigger className="bg-background/50">
+                  <SelectTrigger id="edit-fs" className="bg-background/50">
                     <SelectValue placeholder="None" />
                   </SelectTrigger>
                   <SelectContent>
@@ -782,7 +806,17 @@ export default function ChartOfAccounts() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-tax">Tax category</Label>
+                <Input
+                  id="edit-tax"
+                  placeholder="e.g. Schedule C line"
+                  value={editForm.tax_category}
+                  onChange={(e) => setEditForm((f) => ({ ...f, tax_category: e.target.value }))}
+                  className="bg-background/50"
+                />
+              </div>
+              <div className="flex items-center gap-3 rounded-xl border border-border/40 bg-secondary/10 px-3 py-2.5">
                 <input
                   type="checkbox"
                   id="edit-reconcilable"
@@ -790,9 +824,24 @@ export default function ChartOfAccounts() {
                   onChange={(e) => setEditForm((f) => ({ ...f, is_reconcilable: e.target.checked }))}
                   className="h-4 w-4 rounded border-border accent-primary"
                 />
-                <Label htmlFor="edit-reconcilable" className="cursor-pointer">
+                <Label htmlFor="edit-reconcilable" className="cursor-pointer text-sm font-medium">
                   Reconcilable
                 </Label>
+              </div>
+              <div className="rounded-xl border border-border/40 bg-muted/20 px-3 py-2 text-sm">
+                <div className="font-medium text-foreground">Balance</div>
+                <p className="mt-1 text-muted-foreground">
+                  Not edited on this screen. The grid shows “—” until balances are loaded from posted journal entries / reports.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-desc">Description (optional)</Label>
+                <Input
+                  id="edit-desc"
+                  value={editForm.description}
+                  onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+                  className="bg-background/50"
+                />
               </div>
               <div className="flex gap-3 pt-2">
                 <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setEditOpen(false)}>

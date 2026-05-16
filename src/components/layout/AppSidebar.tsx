@@ -39,7 +39,7 @@ const navItems = [
   { icon: FileText, label: "Invoices", path: "/invoices" },
   { icon: Receipt, label: "Expenses", path: "/expenses" },
   { icon: BarChart3, label: "Reports", path: "/reports" },
-  { icon: Users, label: "Customers", path: "/customers" },
+  { icon: Users, label: "Contacts", path: "/contacts" },
   { icon: Wallet, label: "Banking", path: "/banking" },
   { icon: Building2, label: "Payroll", path: "/payroll" },
 ];
@@ -47,7 +47,6 @@ const navItems = [
 const accountingItems = [
   { icon: BookOpen, label: "Chart of Accounts", path: "/accounts" },
   { icon: BookMarked, label: "Journal Entries", path: "/journal-entries" },
-  { icon: Store, label: "Vendors", path: "/vendors" },
   { icon: ShoppingCart, label: "Bills", path: "/bills" },
 ];
 

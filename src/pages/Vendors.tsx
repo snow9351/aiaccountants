@@ -19,7 +19,7 @@ const fmtCurrency = (v: number) =>
 export default function Vendors() {
   const { toast } = useToast();
   const orgId = useOrgId();
-  const { data: vendors = [] } = useVendors();
+  const { data: vendors = [] } = useVendors(orgId);
   const createVendor = useCreateVendor();
 
   const [search, setSearch] = useState("");

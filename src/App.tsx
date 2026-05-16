@@ -15,6 +15,7 @@ import Invoices from "./pages/Invoices.tsx";
 import Expenses from "./pages/Expenses.tsx";
 import Reports from "./pages/Reports.tsx";
 import Customers from "./pages/Customers.tsx";
+import Contacts from "./pages/Contacts.tsx";
 import Banking from "./pages/Banking.tsx";
 import Payroll from "./pages/Payroll.tsx";
 import Insights from "./pages/Insights.tsx";
@@ -91,6 +92,7 @@ const App = () => (
             <Route path="/invoices" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />
             <Route path="/expenses" element={<ProtectedRoute><Expenses /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+            <Route path="/contacts" element={<ProtectedRoute><Contacts /></ProtectedRoute>} />
             <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
             <Route path="/banking" element={<ProtectedRoute><Banking /></ProtectedRoute>} />
             <Route path="/payroll" element={<ProtectedRoute><Payroll /></ProtectedRoute>} />

@@ -109,9 +109,9 @@ export function CommandPalette() {
             <Receipt className="h-4 w-4" />
             <span>Expenses</span>
           </CommandItem>
-          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/customers"))}>
+          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/contacts"))}>
             <Users className="h-4 w-4" />
-            <span>Customers</span>
+            <span>Contacts</span>
           </CommandItem>
           <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/banking"))}>
             <Wallet className="h-4 w-4" />
@@ -143,10 +143,6 @@ export function CommandPalette() {
           <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/journal-entries"))}>
             <BookMarked className="h-4 w-4" />
             <span>Journal Entries</span>
-          </CommandItem>
-          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/vendors"))}>
-            <Store className="h-4 w-4" />
-            <span>Vendors</span>
           </CommandItem>
           <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/bills"))}>
             <ShoppingCart className="h-4 w-4" />

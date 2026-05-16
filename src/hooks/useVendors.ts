@@ -2,14 +2,16 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
 import type { Vendor } from '@/integrations/supabase/types';
 
-export function useVendors() {
+export function useVendors(orgId?: string) {
   return useQuery({
-    queryKey: ['vendors'],
+    queryKey: ['vendors', orgId ?? ''],
+    enabled: !!orgId && isSupabaseConfigured,
     queryFn: async (): Promise<Vendor[]> => {
-      if (!isSupabaseConfigured) return [];
+      if (!isSupabaseConfigured || !orgId) return [];
       const { data, error } = await supabase
         .from('vendors')
         .select('*')
+        .eq('org_id', orgId)
         .eq('is_active', true)
         .order('name');
       if (error) throw error;

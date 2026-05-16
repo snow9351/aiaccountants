@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { CommandPalette } from "@/components/CommandPalette";
-import { useBills, useCreateBill, useUpdateBillStatus } from "@/hooks/useBills";
+import { useBills, useCreateBill, useMarkBillPaid } from "@/hooks/useBills";
 import { useVendors } from "@/hooks/useVendors";
 import { useOrgId } from "@/hooks/useCompanies";
 import { useToast } from "@/hooks/use-toast";
@@ -31,10 +31,10 @@ const TABS = ["all", "draft", "received", "approved", "overdue", "paid"] as cons
 export default function Bills() {
   const { toast } = useToast();
   const orgId = useOrgId();
-  const { data: bills = [] } = useBills();
-  const { data: vendors = [] } = useVendors();
+  const { data: bills = [] } = useBills(orgId);
+  const { data: vendors = [] } = useVendors(orgId);
   const createBill = useCreateBill();
-  const updateBillStatus = useUpdateBillStatus();
+  const markBillPaid = useMarkBillPaid();
 
   const [activeTab, setActiveTab] = useState<string>("all");
   const [search, setSearch] = useState("");
@@ -51,8 +51,25 @@ export default function Bills() {
   const overdue = bills.filter((b: Bill) => b.status === "overdue").reduce((s: number, b: Bill) => s + b.balance_due, 0);
   const paidThisMonth = bills.filter((b: Bill) => b.status === "paid").reduce((s: number, b: Bill) => s + b.total, 0);
 
+  const handleMarkPaid = async (bill: Bill) => {
+    if (!orgId) return;
+    try {
+      await markBillPaid.mutateAsync({ billId: bill.id, orgId });
+      toast({
+        title: "Bill paid",
+        description: "Payment recorded for 1099 YTD tracking.",
+      });
+    } catch (err) {
+      toast({
+        title: "Payment failed",
+        description: (err as Error).message,
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleCreate = async () => {
-    if (!form.vendor_id || !form.due_date || !form.total) { toast({ title: "Fill all required fields", variant: "destructive" }); return; }
+    if (!orgId || !form.vendor_id || !form.due_date || !form.total) { toast({ title: "Fill all required fields", variant: "destructive" }); return; }
     try {
       const total = parseFloat(form.total);
       await createBill.mutateAsync({ vendor_id: form.vendor_id, bill_number: form.bill_number || undefined, bill_date: form.bill_date, due_date: form.due_date, total, subtotal: total, tax_amount: 0, amount_paid: 0, description: form.description || undefined, status: "received", org_id: orgId, is_duplicate: false });
@@ -152,7 +169,14 @@ export default function Bills() {
                     </td>
                     <td className="px-5 py-3.5">
                       {bill.status !== "paid" && bill.status !== "cancelled" && (
-                        <button onClick={() => updateBillStatus.mutate({ id: bill.id, status: "paid" })} className="text-xs text-primary hover:underline">Mark Paid</button>
+                        <button
+                          type="button"
+                          onClick={() => handleMarkPaid(bill)}
+                          disabled={markBillPaid.isPending}
+                          className="text-xs text-primary hover:underline disabled:opacity-50"
+                        >
+                          Mark Paid
+                        </button>
                       )}
                     </td>
                   </tr>

@@ -81,6 +81,37 @@ serve(async (req) => {
       if (orgId) await supabase.from("organizations").update({ subscription_status: "active" }).eq("id", orgId);
       break;
     }
+
+    case "checkout.session.completed": {
+      const session = event.data.object as Stripe.Checkout.Session;
+      const invoiceId = session.metadata?.invoice_id;
+      if (invoiceId && session.payment_status === "paid") {
+        const amount = (session.amount_total ?? 0) / 100;
+        const pi = session.payment_intent as string | undefined;
+        await supabase.rpc("apply_stripe_invoice_payment", {
+          p_invoice_id: invoiceId,
+          p_amount: amount,
+          p_stripe_payment_intent_id: pi ?? session.id,
+          p_reference: session.id,
+        });
+      }
+      break;
+    }
+
+    case "payment_intent.succeeded": {
+      const pi = event.data.object as Stripe.PaymentIntent;
+      const invoiceId = pi.metadata?.invoice_id;
+      if (invoiceId) {
+        const amount = (pi.amount_received ?? 0) / 100;
+        await supabase.rpc("apply_stripe_invoice_payment", {
+          p_invoice_id: invoiceId,
+          p_amount: amount,
+          p_stripe_payment_intent_id: pi.id,
+          p_reference: pi.id,
+        });
+      }
+      break;
+    }
   }
 
   return new Response(JSON.stringify({ received: true }), { headers: { "Content-Type": "application/json" } });

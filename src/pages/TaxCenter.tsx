@@ -2,17 +2,16 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Calculator, Calendar, FileText, CheckCircle, DollarSign, TrendingUp, Database } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CommandPalette } from "@/components/CommandPalette";
-import { useVendors } from "@/hooks/useVendors";
-import { useExpenses } from "@/hooks/useExpenses";
+import { useOrgId } from "@/hooks/useCompanies";
+import { useVendors1099Threshold } from "@/hooks/useContacts";
 
 const fmtCurrency = (v: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(v);
 
 export default function TaxCenter() {
-  const { data: vendors = [] } = useVendors();
-  const { data: expenses = [] } = useExpenses();
-
-  const vendors1099 = vendors.filter(v => v.is_1099 && v.total_spend >= 600);
+  const orgId = useOrgId();
+  const currentYear = new Date().getFullYear();
+  const { data: vendors1099 = [] } = useVendors1099Threshold(orgId, currentYear);
 
   return (
     <AppLayout>
@@ -45,7 +44,7 @@ export default function TaxCenter() {
         <div className="glass-card rounded-2xl p-5">
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">1099 Vendors</p>
           <p className="mt-1 font-display text-2xl font-bold text-primary">{vendors1099.length}</p>
-          <p className="mt-1 text-xs text-muted-foreground">Requiring forms</p>
+          <p className="mt-1 text-xs text-muted-foreground">≥ $600 YTD ({currentYear})</p>
         </div>
       </div>
 
@@ -96,7 +95,9 @@ export default function TaxCenter() {
           <div className="flex items-center gap-3 px-5 py-4 border-b border-border/30">
             <FileText className="h-4 w-4 text-primary" />
             <h2 className="font-semibold text-foreground">1099-NEC Report — Contractors Paid ≥ $600</h2>
-            <span className="ml-auto rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">{vendors1099.length} vendors</span>
+            <span className="ml-auto rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+              {vendors1099.length} vendors
+            </span>
           </div>
           {vendors1099.length > 0 ? (
             <div className="overflow-x-auto">
@@ -105,25 +106,28 @@ export default function TaxCenter() {
                   <tr className="border-b border-border/20">
                     <th className="px-5 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Vendor</th>
                     <th className="px-5 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Tax ID</th>
-                    <th className="px-5 py-2.5 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Paid (YTD)</th>
+                    <th className="px-5 py-2.5 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">Paid (YTD)</th>
                     <th className="px-5 py-2.5 text-center text-xs font-medium uppercase tracking-wider text-muted-foreground">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {vendors1099.map(vendor => (
-                    <tr key={vendor.id} className="border-b border-border/10 hover:bg-secondary/20 transition-colors">
+                  {vendors1099.map((row) => (
+                    <tr key={row.vendor_id} className="border-b border-border/10 hover:bg-secondary/20 transition-colors">
                       <td className="px-5 py-3">
-                        <p className="text-sm font-medium text-foreground">{vendor.name}</p>
-                        {vendor.email && <p className="text-xs text-muted-foreground">{vendor.email}</p>}
+                        <p className="text-sm font-medium text-foreground">{row.display_name}</p>
                       </td>
-                      <td className="px-5 py-3 text-sm font-mono text-muted-foreground">{vendor.tax_id ?? "—"}</td>
-                      <td className="px-5 py-3 text-right text-sm font-medium text-foreground">{fmtCurrency(vendor.total_spend)}</td>
+                      <td className="px-5 py-3 text-sm font-mono text-muted-foreground">{row.tax_id ?? "—"}</td>
+                      <td className="px-5 py-3 text-right text-sm font-medium text-foreground">
+                        {fmtCurrency(Number(row.ytd_1099_payments))}
+                      </td>
                       <td className="px-5 py-3 text-center">
-                        <span className={cn(
-                          "rounded-full px-2.5 py-1 text-[10px] font-medium",
-                          vendor.tax_id ? "bg-success/10 text-success" : "bg-warning/10 text-warning"
-                        )}>
-                          {vendor.tax_id ? "Tax ID on file" : "Missing Tax ID"}
+                        <span
+                          className={cn(
+                            "rounded-full px-2.5 py-1 text-[10px] font-medium",
+                            row.tax_id ? "bg-success/10 text-success" : "bg-warning/10 text-warning"
+                          )}
+                        >
+                          {row.tax_id ? "Tax ID on file" : "Missing Tax ID"}
                         </span>
                       </td>
                     </tr>
@@ -134,7 +138,9 @@ export default function TaxCenter() {
           ) : (
             <div className="p-8 text-center">
               <CheckCircle className="h-8 w-8 text-success mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">No 1099 vendors meeting the $600 threshold this year.</p>
+              <p className="text-sm text-muted-foreground">
+                No 1099-eligible vendors at or above $600 YTD for {currentYear}. Payments are tracked when bills are marked paid.
+              </p>
             </div>
           )}
         </div>
