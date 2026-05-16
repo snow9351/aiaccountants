@@ -1,6 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
 import type { Invoice, InvoiceLineItem, InvoicePayment } from '@/integrations/supabase/types';
+
+async function readFunctionError(error: unknown): Promise<string> {
+  if (error instanceof FunctionsHttpError && error.context) {
+    try {
+      const body = (await error.context.json()) as { error?: string; hint?: string };
+      if (body?.error) return body.hint ? `${body.error} (${body.hint})` : body.error;
+    } catch {
+      /* ignore parse errors */
+    }
+  }
+  return error instanceof Error ? error.message : 'Send failed';
+}
 
 export type InvoiceLineInput = {
   description: string;
@@ -188,15 +201,50 @@ export function useSendInvoice() {
 
       const { data, error } = await supabase.functions.invoke('send-invoice', {
         body: { invoice_id: invoiceId },
-        headers: { Authorization: `Bearer ${token}` },
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error as string);
-      return { ...(data as { payment_link_url?: string; email_sent?: boolean }), orgId, invoiceId };
+
+      if (data && typeof data === 'object' && 'error' in data && data.error) {
+        throw new Error(
+          typeof data.details === 'string'
+            ? `${data.error}: ${data.details}`
+            : String(data.error),
+        );
+      }
+
+      if (error) {
+        const detail = await readFunctionError(error);
+        const edgeUnavailable =
+          detail.includes('Failed to send a request to the Edge Function') ||
+          detail.includes('FunctionsFetchError');
+
+        if (edgeUnavailable) {
+          const { error: rpcErr } = await supabase.rpc('transition_invoice_status', {
+            p_invoice_id: invoiceId,
+            p_new_status: 'sent',
+          });
+          if (rpcErr) throw rpcErr;
+          return {
+            orgId,
+            invoiceId,
+            payment_link_url: null,
+            email_sent: false,
+            fallback: true as const,
+          };
+        }
+        throw new Error(detail);
+      }
+
+      return {
+        ...(data as { payment_link_url?: string; email_sent?: boolean; balance_due?: number }),
+        orgId,
+        invoiceId,
+        fallback: false as const,
+      };
     },
     onSuccess: ({ orgId, invoiceId }) => {
       qc.invalidateQueries({ queryKey: ['invoices', orgId] });
       qc.invalidateQueries({ queryKey: ['invoice', invoiceId] });
+      qc.invalidateQueries({ queryKey: ['audit_log'] });
     },
   });
 }

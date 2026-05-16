@@ -211,11 +211,19 @@ export default function Invoices() {
     if (!orgId) return;
     try {
       const res = await sendInvoice.mutateAsync({ invoiceId: id, orgId });
+      if (res.fallback) {
+        toast({
+          title: "Marked as sent",
+          description:
+            "Send-invoice Edge Function is not deployed. Run: npx supabase functions deploy send-invoice — then Stripe/email will work.",
+        });
+        return;
+      }
       toast({
         title: res.email_sent ? "Invoice sent" : "Invoice marked sent",
         description: res.payment_link_url
-          ? "Payment link created. Email sent if customer has an address."
-          : "Configure STRIPE_SECRET_KEY for online payment links.",
+          ? "Payment link created. Email sent if customer has an address and RESEND_API_KEY is set."
+          : "Add STRIPE_SECRET_KEY in Supabase Edge Function secrets for online payment links.",
       });
     } catch (err) {
       toast({ title: "Send failed", description: (err as Error).message, variant: "destructive" });
@@ -224,18 +232,33 @@ export default function Invoices() {
   };
 
   const handlePdf = async (inv: Invoice) => {
-    const cust = customerMap.get(inv.customer_id);
-    const { data: lineRows } = await supabase
-      .from("invoice_line_items")
-      .select("*")
-      .eq("invoice_id", inv.id)
-      .order("line_number");
-    await downloadInvoicePdf({
-      invoice: inv,
-      lines: (lineRows ?? []) as InvoiceLineItem[],
-      customer: cust ? { name: cust.name, email: cust.email, billing_address: cust.billing_address } : null,
-      orgName,
-    });
+    try {
+      const cust = customerMap.get(inv.customer_id);
+      const { data: lineRows, error } = await supabase
+        .from("invoice_line_items")
+        .select("*")
+        .eq("invoice_id", inv.id)
+        .order("line_number");
+      if (error) throw error;
+
+      const invoiceRow =
+        detail?.invoice.id === inv.id
+          ? detail.invoice
+          : (await supabase.from("invoices").select("*").eq("id", inv.id).single()).data ?? inv;
+
+      await downloadInvoicePdf({
+        invoice: invoiceRow as Invoice,
+        lines: (lineRows ?? []) as InvoiceLineItem[],
+        customer: cust ? { name: cust.name, email: cust.email, billing_address: cust.billing_address } : null,
+        orgName,
+      });
+    } catch (err) {
+      toast({
+        title: "PDF download failed",
+        description: (err as Error).message,
+        variant: "destructive",
+      });
+    }
   };
 
   const handleRecordPayment = async () => {

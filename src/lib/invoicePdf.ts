@@ -10,9 +10,11 @@ export type InvoicePdfInput = {
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
 
+type DocWithTable = import('jspdf').jsPDF & { lastAutoTable?: { finalY: number } };
+
 export async function downloadInvoicePdf(input: InvoicePdfInput): Promise<void> {
   const { jsPDF } = await import('jspdf');
-  await import('jspdf-autotable');
+  const { default: autoTable } = await import('jspdf-autotable');
 
   const doc = new jsPDF();
   const { invoice, lines, customer, orgName } = input;
@@ -37,13 +39,12 @@ export async function downloadInvoicePdf(input: InvoicePdfInput): Promise<void> 
   const tableBody = lines.map((li) => [
     li.description,
     String(li.quantity),
-    fmt(li.unit_price),
+    fmt(Number(li.unit_price)),
     `${li.tax_rate}%`,
-    fmt(li.quantity * li.unit_price),
+    fmt(Number(li.quantity) * Number(li.unit_price)),
   ]);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (doc as any).autoTable({
+  autoTable(doc, {
     startY: 64,
     head: [['Description', 'Qty', 'Unit price', 'Tax', 'Amount']],
     body: tableBody.length ? tableBody : [['—', '—', '—', '—', '—']],
@@ -51,31 +52,28 @@ export async function downloadInvoicePdf(input: InvoicePdfInput): Promise<void> 
     headStyles: { fillColor: [59, 130, 246] },
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const finalY = ((doc as any).lastAutoTable?.finalY ?? 100) + 10;
+  const finalY = ((doc as DocWithTable).lastAutoTable?.finalY ?? 100) + 10;
 
   let y = finalY;
-  doc.text(`Subtotal: ${fmt(invoice.subtotal)}`, 140, y);
+  doc.text(`Subtotal: ${fmt(Number(invoice.subtotal))}`, 140, y);
   y += 6;
   const discountType = invoice.discount_type ?? 'none';
-  const discountValue = invoice.discount_value ?? 0;
+  const discountValue = Number(invoice.discount_value ?? 0);
   if (discountType !== 'none' && discountValue > 0) {
     const label =
-      discountType === 'percent'
-        ? `Discount (${discountValue}%):`
-        : 'Discount:';
+      discountType === 'percent' ? `Discount (${discountValue}%):` : 'Discount:';
     const disc =
       discountType === 'percent'
-        ? invoice.subtotal * (discountValue / 100)
+        ? Number(invoice.subtotal) * (discountValue / 100)
         : discountValue;
     doc.text(`${label} -${fmt(disc)}`, 140, y);
     y += 6;
   }
-  doc.text(`Tax: ${fmt(invoice.tax_amount)}`, 140, y);
+  doc.text(`Tax: ${fmt(Number(invoice.tax_amount))}`, 140, y);
   y += 6;
   doc.setFont(undefined, 'bold');
-  doc.text(`Total: ${fmt(invoice.total)}`, 140, y);
-  doc.text(`Balance due: ${fmt(invoice.balance_due)}`, 140, y + 6);
+  doc.text(`Total: ${fmt(Number(invoice.total))}`, 140, y);
+  doc.text(`Balance due: ${fmt(Number(invoice.balance_due))}`, 140, y + 6);
   doc.setFont(undefined, 'normal');
 
   if (invoice.notes) {
@@ -83,5 +81,6 @@ export async function downloadInvoicePdf(input: InvoicePdfInput): Promise<void> 
     doc.text(`Notes: ${invoice.notes}`, 14, y + 16, { maxWidth: 180 });
   }
 
-  doc.save(`${invoice.invoice_number}.pdf`);
+  const safeName = invoice.invoice_number.replace(/[^\w.-]+/g, '_');
+  doc.save(`${safeName || 'invoice'}.pdf`);
 }
