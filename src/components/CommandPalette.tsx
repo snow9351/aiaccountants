@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   CommandDialog,
@@ -9,31 +9,39 @@ import {
   CommandList,
   CommandSeparator,
 } from "@/components/ui/command";
+import { FileText, ArrowLeftRight, Receipt, ShoppingCart } from "lucide-react";
+import { useCompanies, useCompanyStore } from "@/hooks/useCompanies";
+import { useMyFirm } from "@/hooks/useFirm";
 import {
-  FileText,
-  ArrowLeftRight,
-  Receipt,
-  Calculator,
-  BarChart3,
-  Users,
-  Sparkles,
-  Settings,
-  Search,
-  LayoutDashboard,
-  Wallet,
-  Building2,
-  Shield,
-  BookOpen,
-  BookMarked,
-  Store,
-  ShoppingCart,
-  Target,
-  FolderKanban,
-} from "lucide-react";
+  getVisibleSections,
+  getAiNavItems,
+  getUtilitySection,
+  type NavVisibilityContext,
+  type NavItem,
+} from "@/config/navigation";
+
+function useNavContext(): NavVisibilityContext {
+  const { data: companies = [] } = useCompanies();
+  const { activeOrgId } = useCompanyStore();
+  const { data: firm } = useMyFirm();
+  const activeCompany = companies.find((c) => c.id === activeOrgId) ?? companies[0];
+  const role = activeCompany?.role as string | undefined;
+  return {
+    isOwner: role === "owner",
+    isAccountant: role === "accountant",
+    isBookkeeper: role === "bookkeeper",
+    isReadOnly: role === "read_only",
+    hasFirm: !!firm?.id,
+  };
+}
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  const ctx = useNavContext();
+  const sections = useMemo(() => getVisibleSections(ctx), [ctx]);
+  const aiItems = useMemo(() => getAiNavItems(ctx), [ctx]);
+  const utilitySection = useMemo(() => getUtilitySection(ctx), [ctx]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -46,10 +54,11 @@ export function CommandPalette() {
     return () => document.removeEventListener("keydown", down);
   }, []);
 
-  // Expose open function globally so TopBar can trigger it
   useEffect(() => {
-    (window as any).__openCommandPalette = () => setOpen(true);
-    return () => { delete (window as any).__openCommandPalette; };
+    (window as Window & { __openCommandPalette?: () => void }).__openCommandPalette = () => setOpen(true);
+    return () => {
+      delete (window as Window & { __openCommandPalette?: () => void }).__openCommandPalette;
+    };
   }, []);
 
   const runAction = (action: () => void) => {
@@ -57,113 +66,95 @@ export function CommandPalette() {
     action();
   };
 
+  const runNavItem = (item: NavItem) => {
+    if (item.action === "ai-chat") {
+      const btn = document.querySelector("[data-ai-chat-trigger]") as HTMLButtonElement;
+      btn?.click();
+      return;
+    }
+    navigate(item.path);
+  };
+
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
-      <CommandInput placeholder="Ask anything… e.g. 'create invoice for Acme $5,000'" />
+      <CommandInput placeholder="Search pages…" />
       <CommandList>
-        <CommandEmpty>No results. Try asking in natural language.</CommandEmpty>
-        <CommandGroup heading="AI Actions">
-          <CommandItem className="gap-3" onSelect={() => runAction(() => {
-            // Open AI Chat
-            const btn = document.querySelector('[data-ai-chat-trigger]') as HTMLButtonElement;
-            btn?.click();
-          })}>
-            <Sparkles className="h-4 w-4 text-primary" />
-            <span>Ask AI a question about your finances</span>
-          </CommandItem>
-          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/insights"))}>
-            <BarChart3 className="h-4 w-4 text-info" />
-            <span>Generate custom report</span>
-          </CommandItem>
-        </CommandGroup>
-        <CommandSeparator />
-        <CommandGroup heading="Quick Actions">
+        <CommandEmpty>No results found.</CommandEmpty>
+
+        <CommandGroup heading="Quick create">
           <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/invoices?action=new"))}>
             <FileText className="h-4 w-4" />
-            <span>Create Invoice</span>
-          </CommandItem>
-          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/transactions"))}>
-            <ArrowLeftRight className="h-4 w-4" />
-            <span>Record Payment</span>
-          </CommandItem>
-          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/expenses"))}>
-            <Receipt className="h-4 w-4" />
-            <span>Log Expense</span>
-          </CommandItem>
-        </CommandGroup>
-        <CommandSeparator />
-        <CommandGroup heading="Navigate">
-          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/dashboard"))}>
-            <LayoutDashboard className="h-4 w-4" />
-            <span>Dashboard</span>
-          </CommandItem>
-          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/transactions"))}>
-            <Search className="h-4 w-4" />
-            <span>Transactions</span>
-          </CommandItem>
-          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/invoices"))}>
-            <FileText className="h-4 w-4" />
-            <span>Invoices</span>
-          </CommandItem>
-          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/expenses"))}>
-            <Receipt className="h-4 w-4" />
-            <span>Expenses</span>
-          </CommandItem>
-          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/contacts"))}>
-            <Users className="h-4 w-4" />
-            <span>Contacts</span>
-          </CommandItem>
-          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/banking"))}>
-            <Wallet className="h-4 w-4" />
-            <span>Banking</span>
-          </CommandItem>
-          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/payroll"))}>
-            <Building2 className="h-4 w-4" />
-            <span>Payroll</span>
-          </CommandItem>
-          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/reports"))}>
-            <BarChart3 className="h-4 w-4" />
-            <span>Reports</span>
-          </CommandItem>
-          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/audit"))}>
-            <Shield className="h-4 w-4" />
-            <span>Audit Log</span>
-          </CommandItem>
-          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/settings"))}>
-            <Settings className="h-4 w-4" />
-            <span>Settings</span>
-          </CommandItem>
-        </CommandGroup>
-        <CommandSeparator />
-        <CommandGroup heading="Accounting">
-          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/accounts"))}>
-            <BookOpen className="h-4 w-4" />
-            <span>Chart of Accounts</span>
-          </CommandItem>
-          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/journal-entries"))}>
-            <BookMarked className="h-4 w-4" />
-            <span>Journal Entries</span>
+            <span>New invoice</span>
           </CommandItem>
           <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/bills"))}>
             <ShoppingCart className="h-4 w-4" />
-            <span>Bills</span>
+            <span>New vendor bill</span>
+          </CommandItem>
+          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/expenses"))}>
+            <Receipt className="h-4 w-4" />
+            <span>Log expense</span>
+          </CommandItem>
+          <CommandItem
+            className="gap-3"
+            onSelect={() =>
+              runAction(() => {
+                window.dispatchEvent(new CustomEvent("open-new-transaction"));
+              })
+            }
+          >
+            <ArrowLeftRight className="h-4 w-4" />
+            <span>Quick entry</span>
           </CommandItem>
         </CommandGroup>
+
         <CommandSeparator />
-        <CommandGroup heading="Advanced">
-          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/budgets"))}>
-            <Target className="h-4 w-4" />
-            <span>Budgets</span>
-          </CommandItem>
-          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/projects"))}>
-            <FolderKanban className="h-4 w-4" />
-            <span>Projects</span>
-          </CommandItem>
-          <CommandItem className="gap-3" onSelect={() => runAction(() => navigate("/tax"))}>
-            <Calculator className="h-4 w-4" />
-            <span>Tax Center</span>
-          </CommandItem>
+
+        <CommandGroup heading="AI & close">
+          {aiItems.map((item) => (
+            <CommandItem
+              key={item.label + item.path}
+              className="gap-3"
+              onSelect={() => runAction(() => runNavItem(item))}
+            >
+              <item.icon className="h-4 w-4" />
+              <span>{item.label}</span>
+            </CommandItem>
+          ))}
         </CommandGroup>
+
+        <CommandSeparator />
+
+        {sections.map((section) => (
+          <CommandGroup key={section.id} heading={section.label}>
+            {section.items.map((item) => (
+              <CommandItem
+                key={item.path}
+                className="gap-3"
+                onSelect={() => runAction(() => navigate(item.path))}
+              >
+                <item.icon className="h-4 w-4" />
+                <span>{item.label}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        ))}
+
+        <CommandSeparator />
+
+        {utilitySection && (
+          <CommandGroup heading={utilitySection.label}>
+            {utilitySection.items.map((item) => (
+              <CommandItem
+                key={item.path}
+                className="gap-3"
+                onSelect={() => runAction(() => navigate(item.path))}
+              >
+                <item.icon className="h-4 w-4" />
+                <span>{item.label}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
       </CommandList>
     </CommandDialog>
   );

@@ -13,7 +13,10 @@ export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const inviteToken = searchParams.get('invite');
-  const { signIn, signUp, signInWithGoogle, resetPassword, isAuthenticated, user, signOut } = useAuth();
+  const redirectTo = searchParams.get('redirect');
+  const safeRedirect =
+    redirectTo && redirectTo.startsWith('/') && !redirectTo.startsWith('//') ? redirectTo : null;
+  const { signIn, signUp, signInWithGoogle, resetPassword, isAuthenticated, user, signOut, loading: authLoading } = useAuth();
   const { toast } = useToast();
 
   const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>('signin');
@@ -40,8 +43,16 @@ export default function Login() {
 
   const navigateAfterAuth = () => {
     if (inviteToken) navigate(`/invite/${inviteToken}`, { replace: true });
+    else if (safeRedirect) navigate(safeRedirect, { replace: true });
     else navigate('/dashboard', { replace: true });
   };
+
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || mode === 'reset') return;
+    if (inviteToken) navigate(`/invite/${inviteToken}`, { replace: true });
+    else if (safeRedirect) navigate(safeRedirect, { replace: true });
+    else navigate('/dashboard', { replace: true });
+  }, [authLoading, isAuthenticated, inviteToken, safeRedirect, mode, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,19 +115,19 @@ export default function Login() {
   const showSignupPaths = mode === 'signup' && !inviteToken && isSupabaseConfigured;
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4 bg-mesh">
+    <div className="min-h-screen bg-mesh flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 glow-primary mb-4">
-            <Zap className="h-8 w-8 text-primary" />
+          <div className="inline-flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 mb-4">
+            <Zap className="h-7 w-7 text-primary" />
           </div>
-          <h1 className="font-display text-3xl font-bold text-gradient">AI Accountants</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">AI Accountants</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             AI-native accounting for modern businesses
           </p>
         </div>
 
-        <div className="glass-card rounded-3xl p-8">
+        <div className="glass-card rounded-xl p-8 shadow-md">
           <h2 className="text-xl font-semibold mb-1">
             {mode === 'reset' ? 'Reset password' : mode === 'signin' ? 'Welcome back' : 'Create your account'}
           </h2>
@@ -142,9 +153,7 @@ export default function Login() {
                 <Button
                   type="button"
                   className="rounded-xl"
-                  onClick={() =>
-                    navigate(inviteToken ? `/invite/${inviteToken}` : '/dashboard', { replace: true })
-                  }
+                  onClick={navigateAfterAuth}
                 >
                   Continue to app
                 </Button>

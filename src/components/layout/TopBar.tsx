@@ -82,7 +82,7 @@ export function TopBar({ onMenuToggle }: { onMenuToggle?: () => void }) {
 
   return (
     <>
-      <header className="sticky top-0 z-30 flex h-14 sm:h-16 items-center justify-between border-b border-border/50 bg-background/60 px-3 sm:px-6 backdrop-blur-xl gap-2">
+      <header className="sticky top-0 z-30 flex h-14 sm:h-16 items-center justify-between border-b border-border bg-card px-3 sm:px-6 shadow-sm gap-2">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           {onMenuToggle && (
             <button onClick={onMenuToggle} className="lg:hidden shrink-0 p-2 rounded-lg text-muted-foreground hover:text-foreground">
@@ -116,7 +116,7 @@ export function TopBar({ onMenuToggle }: { onMenuToggle?: () => void }) {
 
           <Button
             size="sm"
-            className="gap-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 glow-primary"
+            className="gap-2 rounded-lg bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
             onClick={() => {
               if (isReadOnly) {
                 toast({ title: "Read-only access", description: "You don't have permission to create transactions in this company.", variant: "destructive" });

@@ -8,7 +8,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-mesh">
+    <div className="min-h-screen bg-background">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
@@ -19,9 +19,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
       <AppSidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      <div className="lg:ml-[240px] transition-all duration-300">
+      <div className="lg:ml-[260px] transition-all duration-300">
         <TopBar onMenuToggle={() => setSidebarOpen(true)} />
-        <main className="p-3 sm:p-4 lg:p-6">{children}</main>
+        <main className="overflow-x-hidden overflow-y-auto p-3 sm:p-4 lg:p-6">{children}</main>
       </div>
       <AIChat />
     </div>

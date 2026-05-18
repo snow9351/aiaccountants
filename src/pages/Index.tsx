@@ -6,6 +6,7 @@ import { AIInsights } from "@/components/dashboard/AIInsights";
 import { RecentTransactions } from "@/components/dashboard/RecentTransactions";
 import { ARAging } from "@/components/dashboard/ARAging";
 import { QuickActions } from "@/components/dashboard/QuickActions";
+import { AiToolBar } from "@/components/dashboard/AiToolBar";
 import { CommandPalette } from "@/components/CommandPalette";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDashboardKPIs } from "@/hooks/useDashboard";
@@ -38,6 +39,8 @@ const Index = () => {
           Here's your financial overview for {dateStr}
         </p>
       </div>
+
+      <AiToolBar />
 
       {/* KPI Cards */}
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

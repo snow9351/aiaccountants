@@ -3,10 +3,11 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { type ReactNode, useState, useEffect } from "react";
+import { type ReactNode } from "react";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
-import LandingPage from "./pages/LandingPage.tsx";
+import HomeRoute from "./pages/HomeRoute.tsx";
+import PricingPage from "./pages/PricingPage.tsx";
 import Login from "./pages/Login.tsx";
 import AcceptInvite from "./pages/AcceptInvite.tsx";
 import Index from "./pages/Index.tsx";
@@ -28,7 +29,6 @@ import JournalEntries from "./pages/JournalEntries.tsx";
 import Budgets from "./pages/Budgets.tsx";
 import Projects from "./pages/Projects.tsx";
 import TaxCenter from "./pages/TaxCenter.tsx";
-import Pricing from "./pages/Pricing.tsx";
 import Categorization from "./pages/Categorization.tsx";
 import Reconciliation from "./pages/Reconciliation.tsx";
 import MonthEndClose from "./pages/MonthEndClose.tsx";
@@ -53,19 +53,11 @@ const queryClient = new QueryClient({
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, loading } = useAuth();
-  const [timedOut, setTimedOut] = useState(false);
 
-  useEffect(() => {
-    if (loading) {
-      const timer = setTimeout(() => setTimedOut(true), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [loading]);
-
-  if (loading && !timedOut) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        <span className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
       </div>
     );
   }
@@ -82,7 +74,7 @@ const App = () => (
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
             {/* Public routes */}
-            <Route path="/" element={<LandingPage />} />
+            <Route path="/" element={<HomeRoute />} />
             <Route path="/login" element={<Login />} />
             <Route path="/invite/:token" element={<AcceptInvite />} />
 
@@ -117,7 +109,7 @@ const App = () => (
             <Route path="/accruals" element={<ProtectedRoute><Accruals /></ProtectedRoute>} />
 
             {/* Public */}
-            <Route path="/pricing" element={<Pricing />} />
+            <Route path="/pricing" element={<PricingPage />} />
 
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, Zap, Building2, Star, Loader2, AlertCircle } from "lucide-react";
+import { Check, Zap, Building2, Star, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -13,6 +13,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useOrgId } from "@/hooks/useCompanies";
 import { isSupabaseConfigured } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { BillingIntervalToggle, type BillingInterval } from "@/components/pricing/BillingIntervalToggle";
+import { annualSavingsPercent, formatPlanPrice } from "@/lib/pricingDisplay";
 
 const FEATURE_LABELS: Record<string, string> = {
   invoicing: "Invoicing & A/R",
@@ -35,12 +37,10 @@ const PLAN_ICONS: Record<string, React.ElementType> = {
   firm: Building2,
 };
 
-const PLAN_COLORS: Record<string, string> = {
-  starter: "border-border/50",
-  pro: "border-primary ring-2 ring-primary/30",
-  accountant: "border-info/50",
-  firm: "border-accent/50",
-};
+const FEATURED_PLAN = "pro";
+
+/** Display order: Pro in the visual center on large screens */
+const PLAN_DISPLAY_ORDER = ["starter", "pro", "accountant", "firm"] as const;
 
 /** Shown when Supabase env is missing (demo) or API returns no rows after load. */
 const DEMO_PLANS: Plan[] = [
@@ -118,20 +118,30 @@ const DEMO_PLANS: Plan[] = [
   },
 ];
 
-export default function Pricing() {
+type PricingProps = { embedded?: boolean };
+
+export default function Pricing({ embedded = false }: PricingProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const orgId = useOrgId();
   const { data, isLoading, isError, error, refetch, isFetching } = usePlans();
   const checkout = useCreateCheckoutSession();
-  const [interval, setInterval] = useState<"monthly" | "annually">("monthly");
+  const [interval, setInterval] = useState<BillingInterval>("monthly");
+  const [selectedPlan, setSelectedPlan] = useState<string>(FEATURED_PLAN);
 
   const plans = useMemo(() => {
-    if (data && data.length > 0) return data;
-    if (!isSupabaseConfigured) return DEMO_PLANS;
-    if (!isLoading && (isError || !data?.length)) return DEMO_PLANS;
-    return [];
+    let list: Plan[];
+    if (data && data.length > 0) list = data;
+    else if (!isSupabaseConfigured) list = DEMO_PLANS;
+    else if (!isLoading && (isError || !data?.length)) list = DEMO_PLANS;
+    else return [];
+
+    return [...list].sort((a, b) => {
+      const ai = PLAN_DISPLAY_ORDER.indexOf(a.name as (typeof PLAN_DISPLAY_ORDER)[number]);
+      const bi = PLAN_DISPLAY_ORDER.indexOf(b.name as (typeof PLAN_DISPLAY_ORDER)[number]);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
   }, [data, isLoading, isError, isSupabaseConfigured]);
 
   /** UI fallback only — does not mean Stripe is configured. */
@@ -154,7 +164,8 @@ export default function Pricing() {
   const canAttemptCheckout = plansFromDatabase && !!user && !!orgId;
 
   const handleSelect = (planName: string) => {
-    if (!user) {
+    if (authLoading) return;
+    if (!isAuthenticated || !user) {
       navigate("/login?redirect=/pricing");
       return;
     }
@@ -197,8 +208,8 @@ export default function Pricing() {
   };
 
   return (
-    <div className="min-h-screen bg-background bg-mesh">
-      <div className="mx-auto max-w-7xl px-4 py-16">
+    <div className={embedded ? "bg-background overflow-visible" : "min-h-screen overflow-visible bg-background bg-mesh"}>
+      <div className={cn("mx-auto max-w-7xl overflow-visible", embedded ? "px-1 py-4" : "px-4 py-16")}>
         {isSupabaseConfigured && !isLoading && !isError && (!data || data.length === 0) && (
           <div className="mb-8 flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/5 px-4 py-3 text-sm text-foreground">
             <AlertCircle className="h-5 w-5 shrink-0 text-warning" />
@@ -241,16 +252,6 @@ export default function Pricing() {
           </div>
           <h1 className="font-display text-5xl font-bold text-foreground">Simple, transparent pricing</h1>
           <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">From solo founders to accounting firms. Cancel anytime.</p>
-
-          {/* Interval toggle */}
-          <div className="mt-8 inline-flex items-center rounded-xl border border-border/50 bg-secondary/20 p-1">
-            <button onClick={() => setInterval("monthly")} className={cn("rounded-lg px-4 py-2 text-sm font-medium transition-all", interval === "monthly" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
-              Monthly
-            </button>
-            <button onClick={() => setInterval("annually")} className={cn("rounded-lg px-4 py-2 text-sm font-medium transition-all", interval === "annually" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
-              Annually <span className="ml-1 text-xs opacity-70">Save ~17%</span>
-            </button>
-          </div>
 
           {plansFromDatabase && anyPlanMissingStripeForInterval && (
             <div className="mx-auto mt-6 max-w-2xl space-y-3 rounded-xl border border-border/60 bg-muted/15 px-4 py-3 text-sm text-muted-foreground">
@@ -299,8 +300,10 @@ export default function Pricing() {
           )}
         </div>
 
+        <BillingIntervalToggle value={interval} onChange={setInterval} size="lg" className="mb-8" />
+
         {/* Plan cards */}
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="pricing-plan-grid">
           {isLoading && isSupabaseConfigured && (
             <div className="col-span-full flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -308,47 +311,113 @@ export default function Pricing() {
             </div>
           )}
           {(isLoading && isSupabaseConfigured ? [] : plans).map((plan) => {
-            const Icon = PLAN_ICONS[plan.name] ?? Zap;
+            const planKey = plan.name.toLowerCase();
+            const Icon = PLAN_ICONS[planKey] ?? Zap;
             const displayMonthly = planDisplayPriceCents(plan, "price_monthly");
             const displayAnnual = planDisplayPriceCents(plan, "price_annually");
-            const price = interval === "annually" ? displayAnnual / 12 : displayMonthly;
-            const isPopular = plan.name === "pro";
+            const priceInfo = formatPlanPrice(displayMonthly, displayAnnual, interval);
+            const savingsPct = annualSavingsPercent(displayMonthly, displayAnnual);
+            const isFeatured = planKey === FEATURED_PLAN;
+            const isSelected = selectedPlan === planKey;
             const planRow = plansFromDatabase ? data?.find((p) => p.name === plan.name) : undefined;
             const stripeOk = !plansFromDatabase || (planRow ? stripeReadyForPlan(planRow) : false);
             const buttonDisabled =
               checkout.isPending || !canAttemptCheckout || !stripeOk;
 
             return (
-              <div key={plan.id} className={cn("glass-card relative rounded-2xl p-6 flex flex-col", PLAN_COLORS[plan.name])}>
-                {isPopular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-foreground">
-                    Most Popular
-                  </div>
+              <div key={plan.id} className="h-full">
+              <div
+                role="button"
+                tabIndex={0}
+                aria-pressed={isSelected}
+                aria-label={`${plan.display_name} plan${isSelected ? ", selected" : ""}`}
+                onClick={() => setSelectedPlan(planKey)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedPlan(planKey);
+                  }
+                }}
+                className={cn(
+                  "pricing-plan-card h-full",
+                  isFeatured && "pricing-plan-card--featured",
+                  isSelected && "pricing-plan-card--selected",
+                  !isFeatured && isSelected && "border-2 border-primary bg-primary/[0.04]",
                 )}
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                    <Icon className="h-4 w-4 text-primary" />
+              >
+                {isFeatured ? (
+                  <span className="pricing-plan-badge-popular">Most popular</span>
+                ) : (
+                  <span className="pricing-plan-badge-spacer" aria-hidden />
+                )}
+                {isSelected && (
+                  <span className="pricing-plan-badge-selected">
+                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+                    Selected
+                  </span>
+                )}
+                <div className="mb-4 flex items-center gap-2">
+                  <div className={isFeatured ? "pricing-plan-icon--featured" : "pricing-plan-icon--default"}>
+                    <Icon className="h-5 w-5" />
                   </div>
-                  <h3 className="font-display font-bold text-foreground">{plan.display_name}</h3>
+                  <h3 className={cn("font-semibold", isFeatured ? "text-primary" : "text-foreground")}>
+                    {plan.display_name}
+                  </h3>
                 </div>
 
                 <div className="mb-6">
-                  <div className="flex items-end gap-1">
-                    <span className="font-display text-4xl font-bold text-foreground">${(price / 100).toFixed(0)}</span>
-                    <span className="text-muted-foreground mb-1">/mo</span>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="flex items-end gap-1">
+                      <span className={isFeatured ? "pricing-plan-price--featured" : "pricing-plan-price--default"}>
+                        ${priceInfo.perMonthLabel}
+                      </span>
+                      <span className="mb-1 text-muted-foreground">/mo</span>
+                    </div>
+                    {interval === "annually" && savingsPct > 0 && (
+                      <span className="mb-1 rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-bold text-success">
+                        Save {savingsPct}%
+                      </span>
+                    )}
                   </div>
-                  {interval === "annually" && (
-                    <p className="text-xs text-success mt-1">Billed ${(displayAnnual / 100).toFixed(0)}/year</p>
+                  <p className={cn("mt-1 text-xs", interval === "annually" ? "text-success" : "text-muted-foreground")}>
+                    {priceInfo.billedLine}
+                  </p>
+                  {interval === "monthly" && savingsPct > 0 && (
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      or ${(displayAnnual / 1200).toFixed(0)}/mo billed annually (save {savingsPct}%)
+                    </p>
                   )}
                   <p className="text-xs text-muted-foreground mt-1">
                     Up to {plan.max_companies === 99 ? "unlimited" : plan.max_companies} {plan.max_companies === 1 ? "company" : "companies"} · {plan.max_users === 99 ? "unlimited" : plan.max_users} users
                   </p>
                 </div>
 
+                <ul className="mt-0 flex-1 space-y-2.5">
+                  {Object.entries(plan.features).filter(([, v]) => v).map(([key]) => (
+                    <li
+                      key={key}
+                      className={cn(
+                        "flex items-center gap-2 text-sm",
+                        isSelected || isFeatured ? "text-foreground" : "text-muted-foreground",
+                      )}
+                    >
+                      <Check className="h-4 w-4 text-success shrink-0" />
+                      {FEATURE_LABELS[key] ?? key}
+                    </li>
+                  ))}
+                </ul>
+
                 <Button
-                  className={cn("w-full rounded-xl mb-6", isPopular ? "" : "bg-secondary/50 text-foreground hover:bg-secondary")}
-                  variant={isPopular ? "default" : "outline"}
-                  onClick={() => handleSelect(plan.name)}
+                  className={cn(
+                    "mt-auto w-full rounded-xl",
+                    isSelected ? "shadow-sm" : "border-border bg-background text-foreground hover:bg-muted",
+                  )}
+                  variant={isSelected ? "default" : "outline"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedPlan(planKey);
+                    handleSelect(planKey);
+                  }}
                   disabled={buttonDisabled}
                   title={
                     !plansFromDatabase
@@ -374,17 +443,13 @@ export default function Pricing() {
                         ? "Select company"
                         : !stripeOk
                           ? "Configure Stripe price"
-                          : "Start free trial"}
+                          : isSelected
+                            ? isFeatured
+                              ? "Start free trial — Pro"
+                              : `Continue with ${plan.display_name}`
+                            : `Choose ${plan.display_name}`}
                 </Button>
-
-                <ul className="space-y-2.5 flex-1">
-                  {Object.entries(plan.features).filter(([, v]) => v).map(([key]) => (
-                    <li key={key} className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Check className="h-4 w-4 text-success shrink-0" />
-                      {FEATURE_LABELS[key] ?? key}
-                    </li>
-                  ))}
-                </ul>
+              </div>
               </div>
             );
           })}
@@ -399,9 +464,11 @@ export default function Pricing() {
         {/* FAQ */}
         <div className="mt-16 text-center">
           <p className="text-muted-foreground text-sm">Questions? <a href="mailto:hello@connectcash.ai" className="text-primary hover:underline">hello@connectcash.ai</a></p>
-          <button onClick={() => navigate("/dashboard")} className="mt-4 text-sm text-muted-foreground hover:text-foreground transition-colors">
-            ← Back to dashboard
-          </button>
+          {!embedded && (
+            <button onClick={() => navigate("/dashboard")} className="mt-4 text-sm text-muted-foreground hover:text-foreground transition-colors">
+              ← Back to dashboard
+            </button>
+          )}
         </div>
       </div>
     </div>

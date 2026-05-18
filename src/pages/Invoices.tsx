@@ -13,6 +13,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { CommandPalette } from "@/components/CommandPalette";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -89,7 +95,6 @@ export default function Invoices() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [filterStatus, setFilterStatus] = useState<InvoiceStatus | null>(null);
   const [showNew, setShowNew] = useState(false);
-  const [actionMenuId, setActionMenuId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [showPayment, setShowPayment] = useState(false);
 
@@ -204,7 +209,6 @@ export default function Invoices() {
     } catch (err) {
       toast({ title: "Update failed", description: (err as Error).message, variant: "destructive" });
     }
-    setActionMenuId(null);
   };
 
   const handleSend = async (id: string) => {
@@ -228,7 +232,6 @@ export default function Invoices() {
     } catch (err) {
       toast({ title: "Send failed", description: (err as Error).message, variant: "destructive" });
     }
-    setActionMenuId(null);
   };
 
   const handlePdf = async (inv: Invoice) => {
@@ -340,7 +343,7 @@ export default function Invoices() {
         ))}
       </div>
 
-      <div className="glass-card overflow-hidden rounded-2xl">
+      <div className="glass-card overflow-x-auto rounded-2xl">
         <table className="w-full">
           <thead>
             <tr className="border-b border-border/30">
@@ -388,41 +391,54 @@ export default function Invoices() {
                     <td className={cn("px-5 py-4 text-right text-sm font-semibold", inv.balance_due > 0 ? "text-warning" : "text-success")}>
                       {fmtCurrency(inv.balance_due)}
                     </td>
-                    <td className="relative px-3 py-4" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        onClick={() => setActionMenuId(actionMenuId === inv.id ? null : inv.id)}
-                        className="opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
-                      >
-                        <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
-                      </button>
-                      {actionMenuId === inv.id && (
-                        <div className="absolute right-4 top-12 z-50 min-w-[180px] rounded-xl border border-border/50 bg-card p-1.5 shadow-xl">
-                          <button type="button" onClick={() => handlePdf(inv)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs hover:bg-secondary/50">
+                    <td className="px-2 py-4" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 rounded-lg opacity-70 hover:opacity-100 group-hover:opacity-100"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                            <span className="sr-only">Invoice actions</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="z-50 w-48 rounded-xl">
+                          <DropdownMenuItem className="gap-2" onClick={() => handlePdf(inv)}>
                             <Download className="h-3.5 w-3.5" /> Download PDF
-                          </button>
+                          </DropdownMenuItem>
                           {inv.status === "draft" && (
-                            <button type="button" onClick={() => handleSend(inv.id)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs hover:bg-secondary/50">
+                            <DropdownMenuItem className="gap-2" onClick={() => handleSend(inv.id)}>
                               <Send className="h-3.5 w-3.5 text-primary" /> Send
-                            </button>
+                            </DropdownMenuItem>
                           )}
                           {!["voided", "cancelled", "paid", "draft"].includes(inv.status) && (
-                            <button type="button" onClick={() => { setDetailId(inv.id); setShowPayment(true); setActionMenuId(null); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs hover:bg-secondary/50">
+                            <DropdownMenuItem
+                              className="gap-2"
+                              onClick={() => {
+                                setDetailId(inv.id);
+                                setShowPayment(true);
+                              }}
+                            >
                               <CreditCard className="h-3.5 w-3.5" /> Record payment
-                            </button>
+                            </DropdownMenuItem>
                           )}
                           {inv.status === "draft" && (
-                            <button type="button" onClick={() => handleStatus(inv.id, "sent")} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs hover:bg-secondary/50">
+                            <DropdownMenuItem className="gap-2" onClick={() => handleStatus(inv.id, "sent")}>
                               <Send className="h-3.5 w-3.5" /> Mark sent
-                            </button>
+                            </DropdownMenuItem>
                           )}
                           {!["voided", "cancelled", "paid"].includes(inv.status) && (
-                            <button type="button" onClick={() => handleStatus(inv.id, "voided")} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs hover:bg-secondary/50">
+                            <DropdownMenuItem
+                              className="gap-2 text-destructive focus:text-destructive"
+                              onClick={() => handleStatus(inv.id, "voided")}
+                            >
                               <Ban className="h-3.5 w-3.5" /> Void
-                            </button>
+                            </DropdownMenuItem>
                           )}
-                        </div>
-                      )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </td>
                   </tr>
                 );
@@ -431,8 +447,6 @@ export default function Invoices() {
           </tbody>
         </table>
       </div>
-
-      {actionMenuId && <div className="fixed inset-0 z-40" onClick={() => setActionMenuId(null)} />}
 
       {/* Detail dialog */}
       <Dialog open={!!detailId} onOpenChange={(o) => !o && setDetailId(null)}>

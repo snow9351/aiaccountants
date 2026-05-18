@@ -23,7 +23,11 @@ import {
   Zap,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useState } from "react";
+import { cn } from "@/lib/utils";
+import { useState, useMemo } from "react";
+import { BillingIntervalToggle, type BillingInterval } from "@/components/pricing/BillingIntervalToggle";
+import { formatPlanPrice, LANDING_PLAN_PRICES } from "@/lib/pricingDisplay";
+import { useAuth } from "@/contexts/AuthContext";
 import { ScrollReveal } from "@/hooks/use-scroll-reveal";
 import { Menu, X } from "lucide-react";
 
@@ -176,16 +180,33 @@ const proof = [
 /* ─── Component ─── */
 
 export default function LandingPage() {
+  const { isAuthenticated } = useAuth();
   const [activeArch, setActiveArch] = useState(4);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const appHref = isAuthenticated ? "/dashboard" : "/login";
+  const planHref = isAuthenticated ? "/pricing" : "/login?redirect=/pricing";
+  const [billingInterval, setBillingInterval] = useState<BillingInterval>("monthly");
+
+  const tiersWithPrices = useMemo(
+    () =>
+      pricingTiers.map((tier) => {
+        const cents = LANDING_PLAN_PRICES[tier.name];
+        const billing =
+          cents != null
+            ? formatPlanPrice(cents.monthlyCents, cents.annualCents, billingInterval)
+            : null;
+        return { ...tier, billing };
+      }),
+    [billingInterval],
+  );
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-mesh text-foreground">
       {/* ─── Header ─── */}
-      <header className="sticky top-0 z-40 border-b border-border/50 bg-background/70 backdrop-blur-xl">
+      <header className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur-sm shadow-sm">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 sm:py-4 lg:px-8">
           <Link to="/" className="flex items-center gap-2 sm:gap-3">
-            <div className="flex h-9 w-9 sm:h-11 sm:w-11 items-center justify-center rounded-2xl bg-primary/10 glow-primary">
+            <div className="flex h-9 w-9 sm:h-11 sm:w-11 items-center justify-center rounded-xl bg-primary/10">
               <Zap className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
             </div>
             <div>
@@ -204,16 +225,16 @@ export default function LandingPage() {
 
           <div className="flex items-center gap-2 sm:gap-3">
             <Link
-              to="/login"
+              to={appHref}
               className="glass-subtle hidden rounded-xl px-4 py-2.5 text-sm font-medium text-foreground transition-all hover:border-primary/40 md:inline-flex"
             >
-              Open dashboard
+              {isAuthenticated ? "Open dashboard" : "Sign in"}
             </Link>
             <Link
-              to="/login"
-              className="hidden sm:inline-flex items-center gap-2 rounded-xl bg-primary px-4 sm:px-5 py-2.5 sm:py-3 text-sm font-semibold text-primary-foreground glow-primary transition-all hover:opacity-90"
+              to={isAuthenticated ? "/pricing" : "/login"}
+              className="hidden sm:inline-flex items-center gap-2 rounded-xl bg-primary px-4 sm:px-5 py-2.5 sm:py-3 text-sm font-semibold text-primary-foreground transition-all hover:opacity-90"
             >
-              Get started free
+              {isAuthenticated ? "View plans" : "Get started free"}
               <ArrowRight className="h-4 w-4" />
             </Link>
             <button
@@ -246,10 +267,10 @@ export default function LandingPage() {
                 </a>
               ))}
               <Link
-                to="/login"
+                to={isAuthenticated ? "/pricing" : "/login"}
                 className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground"
               >
-                Get started free
+                {isAuthenticated ? "View plans" : "Get started free"}
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
@@ -273,7 +294,7 @@ export default function LandingPage() {
 
             <ScrollReveal delay={150}>
               <h1 className="mx-auto mt-6 sm:mt-8 max-w-5xl font-display text-3xl font-bold leading-[1.1] tracking-tight text-foreground sm:text-5xl md:text-6xl xl:text-7xl">
-                Your books should <span className="text-gradient">think for themselves.</span>{" "}
+                Your books should <span className="text-primary">think for themselves.</span>{" "}
                 <span className="text-muted-foreground">Now they do.</span>
               </h1>
             </ScrollReveal>
@@ -288,10 +309,10 @@ export default function LandingPage() {
             <ScrollReveal delay={450}>
               <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
                 <Link
-                  to="/login"
-                  className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-2xl bg-primary px-6 sm:px-8 py-3.5 sm:py-4 text-base font-semibold text-primary-foreground glow-primary transition-all hover:opacity-90"
+                  to={appHref}
+                  className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-2xl bg-primary px-6 sm:px-8 py-3.5 sm:py-4 text-base font-semibold text-primary-foreground transition-all hover:opacity-90"
                 >
-                  Start for free
+                  {isAuthenticated ? "Open dashboard" : "Start for free"}
                   <ArrowRight className="h-5 w-5" />
                 </Link>
                 <a
@@ -448,7 +469,7 @@ export default function LandingPage() {
               const Icon = item.icon;
               return (
                 <ScrollReveal key={item.title} delay={i * 80}>
-                  <article className="glass-card group rounded-3xl p-6 transition-all duration-300 hover:scale-[1.01] hover:glow-primary h-full">
+                  <article className="glass-card group rounded-3xl p-6 transition-all duration-300 h-full">
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
                       <Icon className="h-5 w-5" />
                     </div>
@@ -645,31 +666,53 @@ export default function LandingPage() {
             </div>
           </ScrollReveal>
 
-          <div className="mx-auto mt-10 grid max-w-6xl gap-6 md:grid-cols-2 xl:grid-cols-4">
-            {pricingTiers.map((tier, i) => (
-              <ScrollReveal key={tier.name} delay={i * 150}>
+          <BillingIntervalToggle
+            value={billingInterval}
+            onChange={setBillingInterval}
+            size="lg"
+            className="mx-auto mt-8"
+          />
+
+          <div className="pricing-plan-grid mx-auto mt-10 max-w-6xl">
+            {tiersWithPrices.map((tier, i) => (
+              <div key={tier.name} className="h-full">
+              <ScrollReveal delay={i * 150}>
                 <div
-                  className={`rounded-[2rem] p-8 transition-all h-full ${
-                    tier.highlight
-                      ? "glass-card scale-[1.03] border-2 border-primary/30 glow-primary"
-                      : "glass-card"
-                  }`}
-                >
-                  {tier.highlight && (
-                    <div className="mb-4 inline-flex rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                      Most popular
-                    </div>
+                  className={cn(
+                    "pricing-plan-card h-full",
+                    tier.highlight && "pricing-plan-card--featured pricing-plan-card--selected",
                   )}
-                  <h3 className="font-display text-2xl font-bold text-foreground">{tier.name}</h3>
-                  <div className="mt-3 flex items-baseline gap-1">
-                    <span className="font-display text-4xl font-bold text-foreground">{tier.price}</span>
-                    {tier.price !== "Custom" && tier.price !== "Free" && (
-                      <span className="text-sm text-muted-foreground">/mo</span>
+                >
+                  {tier.highlight ? (
+                    <span className="pricing-plan-badge-popular">Most popular</span>
+                  ) : (
+                    <span className="pricing-plan-badge-spacer" aria-hidden />
+                  )}
+                  <h3 className={cn("text-xl font-bold", tier.highlight ? "text-primary" : "text-foreground")}>
+                    {tier.name}
+                  </h3>
+                  <div className="mt-3 flex flex-wrap items-end gap-2">
+                    <div className="flex items-baseline gap-1">
+                      <span
+                        className={
+                          tier.highlight ? "pricing-plan-price--featured" : "pricing-plan-price--default"
+                        }
+                      >
+                        {tier.billing ? `$${tier.billing.perMonthLabel}` : tier.price}
+                      </span>
+                      {tier.billing && <span className="text-sm text-muted-foreground">/mo</span>}
+                    </div>
+                    {tier.billing && billingInterval === "annually" && tier.billing.savings > 0 && (
+                      <span className="rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-bold text-success">
+                        Save {tier.billing.savings}%
+                      </span>
                     )}
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{tier.subtitle}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {tier.billing?.billedLine ?? tier.subtitle}
+                  </p>
 
-                  <div className="mt-6 space-y-3">
+                  <div className="mt-6 flex-1 space-y-3">
                     {tier.features.map((f) => (
                       <div key={f} className="flex items-center gap-2">
                         <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
@@ -679,10 +722,10 @@ export default function LandingPage() {
                   </div>
 
                   <Link
-                    to="/login"
-                    className={`mt-8 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-all ${
+                    to={planHref}
+                    className={`mt-auto flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-all ${
                       tier.highlight
-                        ? "bg-primary text-primary-foreground glow-primary hover:opacity-90"
+                        ? "bg-primary text-primary-foreground hover:opacity-90"
                         : "glass-subtle text-foreground hover:border-primary/40"
                     }`}
                   >
@@ -691,6 +734,7 @@ export default function LandingPage() {
                   </Link>
                 </div>
               </ScrollReveal>
+              </div>
             ))}
           </div>
         </section>
@@ -711,11 +755,11 @@ export default function LandingPage() {
                 </p>
                 <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
                   <Link
-                    to="/login"
-                    className="inline-flex items-center gap-2 rounded-2xl bg-primary px-8 py-4 text-base font-semibold text-primary-foreground glow-primary transition-all hover:opacity-90"
+                    to={appHref}
+                    className="inline-flex items-center gap-2 rounded-2xl bg-primary px-8 py-4 text-base font-semibold text-primary-foreground transition-all hover:opacity-90"
                   >
                     <Zap className="h-5 w-5" />
-                    Get started free
+                    {isAuthenticated ? "Open dashboard" : "Get started free"}
                   </Link>
                 </div>
               </div>

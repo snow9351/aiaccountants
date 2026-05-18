@@ -289,7 +289,7 @@ export type Database = {
           org_id: string;
           vendor_id: string;
           bill_number: string | null;
-          status: 'draft' | 'received' | 'approved' | 'paid' | 'overdue' | 'cancelled';
+          status: 'draft' | 'received' | 'approved' | 'partial' | 'paid' | 'overdue' | 'cancelled';
           bill_date: string;
           due_date: string;
           subtotal: number;
@@ -300,6 +300,7 @@ export type Database = {
           description: string | null;
           po_number: string | null;
           is_duplicate: boolean;
+          receipt_url: string | null;
           journal_entry_id: string | null;
           created_at: string;
           updated_at: string;
@@ -352,6 +353,9 @@ export type Database = {
           ai_confidence: number | null;
           ai_suggested_category: string | null;
           receipt_url: string | null;
+          payment_date: string | null;
+          payment_method: string | null;
+          payment_reference: string | null;
           bank_transaction_id: string | null;
           journal_entry_id: string | null;
           project_id: string | null;
