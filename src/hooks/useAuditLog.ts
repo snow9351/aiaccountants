@@ -14,7 +14,7 @@ export const MOCK_AUDIT_EVENTS: AuditEvent[] = [
   },
   {
     id: 'ae-2', org_id: 'mock', timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-    actor_id: null, actor_type: 'ai', actor_name: 'ConnectCash AI',
+    actor_id: null, actor_type: 'ai', actor_name: 'AI Accountants',
     action: 'ai_apply', target_table: 'expenses', target_id: 'exp-1',
     target_description: 'Auto-categorized AWS expense as "Software & Subscriptions" (97% confidence)',
     old_value: { category: null }, new_value: { category: 'Software & Subscriptions' },
@@ -30,7 +30,7 @@ export const MOCK_AUDIT_EVENTS: AuditEvent[] = [
   },
   {
     id: 'ae-4', org_id: 'mock', timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    actor_id: null, actor_type: 'ai', actor_name: 'ConnectCash AI',
+    actor_id: null, actor_type: 'ai', actor_name: 'AI Accountants',
     action: 'ai_suggest', target_table: 'expenses', target_id: 'exp-2',
     target_description: 'Anomaly: AWS charge 47% above 3-month average — flagged for review',
     old_value: null, new_value: { anomaly_score: 0.87, type: 'unusual_amount' },

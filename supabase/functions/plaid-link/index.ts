@@ -25,7 +25,7 @@ serve(async (req) => {
       headers: plaidHeaders,
       body: JSON.stringify({
         user: { client_user_id: org_id },
-        client_name: "ConnectCash AI",
+        client_name: "AI Accountants",
         products: ["transactions"],
         country_codes: ["US"],
         language: "en",

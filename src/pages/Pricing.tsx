@@ -458,7 +458,7 @@ export default function Pricing({ embedded = false }: PricingProps) {
         {/* Revenue share note */}
         <div className="mt-10 glass-card rounded-2xl p-6 text-center max-w-2xl mx-auto">
           <p className="text-sm font-medium text-foreground">Accountant revenue share program</p>
-          <p className="mt-1 text-sm text-muted-foreground">Enroll clients on ConnectCash AI and earn a monthly commission on their subscription. Contact us at <span className="text-primary">partners@connectcash.ai</span> to learn more.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Enroll clients on AI Accountants and earn a monthly commission on their subscription. Contact us at <span className="text-primary">partners@connectcash.ai</span> to learn more.</p>
         </div>
 
         {/* FAQ */}

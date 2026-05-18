@@ -4,7 +4,9 @@ import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import { supabase, isSupabaseConfigured } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useOrgId } from "@/hooks/useCompanies";
 import { useToast } from "@/hooks/use-toast";
+import { formatAiInvokeError, tryExpenseFallbackAnswer } from "@/lib/aiChatFallback";
 
 interface Message {
   id: number;
@@ -39,10 +41,11 @@ function getAIResponse(input: string): string {
 
 export function AIChat() {
   const { user } = useAuth();
+  const orgId = useOrgId();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
-    { id: 0, role: "assistant", content: "Hi! I'm your **ConnectCash AI** assistant. Ask me anything about your finances, or tell me what to do — I can create invoices, log expenses, run reports, and more.", timestamp: new Date() },
+    { id: 0, role: "assistant", content: "Hi! I'm your **AI Accountants** assistant. Ask me anything about your finances, or tell me what to do — I can create invoices, log expenses, run reports, and more.", timestamp: new Date() },
   ]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -74,10 +77,14 @@ export function AIChat() {
         body: {
           messages: updatedMessages.map((m) => ({ role: m.role, content: m.content })),
           userId: user?.id,
+          orgId: orgId || undefined,
         },
       });
 
       if (error) throw error;
+      if (data && typeof data === "object" && "error" in data && (data as { error?: string }).error) {
+        throw new Error((data as { error: string }).error);
+      }
 
       setMessages((prev) => [
         ...prev,
@@ -88,14 +95,28 @@ export function AIChat() {
           timestamp: new Date(),
         },
       ]);
-    } catch {
-      // Fallback to mock on any error
-      const response = getAIResponse(text);
+    } catch (err) {
+      const detail = formatAiInvokeError(err, null);
+      const liveExpense = orgId ? await tryExpenseFallbackAnswer(text, orgId) : null;
+      const offlineHelp =
+        "The AI assistant could not reach the server. To enable full answers:\n\n" +
+        "1. In **Supabase Dashboard** → **Edge Functions** → **Secrets**, set `ANTHROPIC_API_KEY`\n" +
+        "2. Deploy the function: `supabase functions deploy ai-chat`\n\n" +
+        (orgId
+          ? "For expense questions, try again after deploy — or ask about **expenses this month** for a summary from your ledger."
+          : "Select a company in the header switcher, then try again.");
+      const response = liveExpense ?? (isSupabaseConfigured ? offlineHelp : getAIResponse(text));
       setMessages((prev) => [...prev, { id: Date.now() + 1, role: "assistant", content: response, timestamp: new Date() }]);
       toast({
-        title: "AI unavailable",
-        description: "Using cached responses. Check your Supabase Edge Function configuration.",
-        variant: "destructive",
+        title: liveExpense ? "Live data summary" : "AI service unavailable",
+        description: liveExpense
+          ? "The AI service is offline; this answer uses your expense records for this month."
+          : detail.includes("ANTHROPIC")
+            ? "Add ANTHROPIC_API_KEY in Supabase → Edge Functions → Secrets, then run: supabase functions deploy ai-chat"
+            : detail.includes("FunctionsRelayError") || detail.includes("Failed to send")
+              ? "Deploy the ai-chat edge function to your Supabase project."
+              : `${detail.slice(0, 120)}${detail.length > 120 ? "…" : ""}`,
+        variant: liveExpense ? "default" : "destructive",
       });
     } finally {
       setIsTyping(false);
@@ -123,7 +144,7 @@ export function AIChat() {
             <Sparkles className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-foreground">ConnectCash AI</p>
+            <p className="text-sm font-semibold text-foreground">AI Accountants</p>
             <p className="text-[10px] text-muted-foreground flex items-center gap-1">
               {isSupabaseConfigured ? (
                 <><Wifi className="h-2.5 w-2.5 text-success" /> Live data</>
